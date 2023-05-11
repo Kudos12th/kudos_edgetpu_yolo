@@ -14,41 +14,41 @@ objpoints = [] # 3d point in real world space
 imgpoints = [] # 2d points in image plane.
 
 images = glob.glob('./chess/*.jpg')
-# print(images)
-
 
 for fname in images:
     img = cv2.imread(fname)
     gray = cv2.cvtColor(img,cv2.COLOR_BGR2GRAY)
+
     # Find the chess board corners
     ret, corners = cv2.findChessboardCorners(gray, (7,6),None)
-    print(ret)
-    # If found, add object points, image points (after refining them)
     if ret == True:
-        objpoints.append(objp)
         corners2 = cv2.cornerSubPix(gray,corners,(11,11),(-1,-1),criteria)
+        objpoints.append(objp)
         imgpoints.append(corners2)
-        # Draw and display the corners
         img = cv2.drawChessboardCorners(img, (7,6), corners2,ret)
         cv2.imshow('img',img)
         cv2.waitKey(500)
+    else:
+        print(" to find chessboard cFailedorners for image: ", fname)
+
+cv2.destroyAllWindows()
 
 ret, mtx, dist, rvecs, tvecs = cv2.calibrateCamera(objpoints, imgpoints, gray.shape[::-1],None,None)
 
-img = cv2.imread('./data/chess/left12.jpg')
+img = cv2.imread('./chess/left12.jpg')
 h,  w = img.shape[:2]
 newcameramtx, roi=cv2.getOptimalNewCameraMatrix(mtx,dist,(w,h),1,(w,h))
 
 dst = cv2.undistort(img, mtx, dist, None, newcameramtx)
 x,y,w,h = roi
 dst = dst[y:y+h, x:x+w]
-cv2.imwrite('calibresult.png',dst)
+cv2.imwrite('calibresult_undistorted.png',dst)
 
 mapx,mapy = cv2.initUndistortRectifyMap(mtx,dist,None,newcameramtx,(w,h),5)
 dst = cv2.remap(img,mapx,mapy,cv2.INTER_LINEAR)
 x,y,w,h = roi
 dst = dst[y:y+h, x:x+w]
-cv2.imwrite('calibresult.png',dst)
+cv2.imwrite('calibresult_rectified.png',dst)
 
 tot_error = 0
 for i in range(len(objpoints)):
@@ -57,5 +57,12 @@ for i in range(len(objpoints)):
     tot_error += error
 print("total error: ", tot_error/len(objpoints))
 
+fs = cv2.FileStorage("calibration_data.xml", cv2.FileStorage_WRITE)
+fs.write("camera_matrix", mtx)
+fs.write("distortion_coefficients", dist)
+fs.release()
 
-cv2.destroyAllWindows()
+fs = cv2.FileStorage("calibration_data.xml", cv2.FileStorage_READ)
+mtx = fs.getNode("camera_matrix").mat()
+dist = fs.getNode("distortion_coefficients").mat()
+fs.release()
