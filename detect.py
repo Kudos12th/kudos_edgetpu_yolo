@@ -41,7 +41,7 @@ if __name__ == "__main__":
     parser.add_argument("--iou_thresh", type=float, default=0.45, help="NMS IOU threshold")
     parser.add_argument("--names", type=str, default='data/coco.yaml', help="Names file")
     parser.add_argument("--image", "-i", type=str, help="Image file to run detection on")
-    parser.add_argument("--device", type=int, default=0, help="Image capture device to run live detection")
+    parser.add_argument("--device", type=int, default=2, help="Image capture device to run live detection")
     # Device num : v4l2-ctl --list-devices
     parser.add_argument("--stream", action='store_true', help="Process a stream")
     parser.add_argument("--bench_coco", action='store_true', help="Process a stream")
@@ -151,6 +151,18 @@ if __name__ == "__main__":
                 logger.error("Empty image received")
                 break
             else:
+                
+                # cameraMatrix 정의
+                cameraMatrix = np.array([[9.4088597780774421e+02, 0., 3.7770158111216648e+02],
+                                        [0., 9.4925081349933703e+02, 3.2918621409818121e+02],
+                                        [0., 0., 1.]])
+
+                # distCoeffs 정의
+                distCoeffs = np.array([-4.4977607383629226e-01, -3.0529616557684319e-01,
+                                    -3.9021603448837856e-03, -2.8130335366792153e-03,
+                                    1.2224960045867554e+00])
+                image = cv2.undistort(image, cameraMatrix, distCoeffs)
+
                 total_times = []
                 full_image, net_image, pad = get_image_tensor(image, input_size[0])
                 pred = model.forward(net_image)

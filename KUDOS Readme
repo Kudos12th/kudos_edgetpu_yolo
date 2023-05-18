@@ -1,6 +1,10 @@
 [TOC]
 
-python3 detect.py --model best-int8.tflite --stream
+python3 detect.py --model best-int8_edgetpu.tflite --stream
+
+<tflite>
+yolov5s_i384_b32_e160_edgetpu.tflite => best-int8_edgetpu.tflite
+
 
 ls -ltrh /dev/video*
 

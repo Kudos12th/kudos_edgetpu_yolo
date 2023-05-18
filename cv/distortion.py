@@ -41,13 +41,17 @@ newcameramtx, roi=cv2.getOptimalNewCameraMatrix(mtx,dist,(w,h),1,(w,h))
 
 dst = cv2.undistort(img, mtx, dist, None, newcameramtx)
 x,y,w,h = roi
+# print(roi)
 dst = dst[y:y+h, x:x+w]
+# print(dst)
 cv2.imwrite('calibresult_undistorted.png',dst)
 
 mapx,mapy = cv2.initUndistortRectifyMap(mtx,dist,None,newcameramtx,(w,h),5)
 dst = cv2.remap(img,mapx,mapy,cv2.INTER_LINEAR)
 x,y,w,h = roi
+# print(roi)
 dst = dst[y:y+h, x:x+w]
+# print(dst)
 cv2.imwrite('calibresult_rectified.png',dst)
 
 tot_error = 0
