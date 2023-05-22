@@ -41,7 +41,7 @@ if __name__ == "__main__":
     parser.add_argument("--iou_thresh", type=float, default=0.45, help="NMS IOU threshold")
     parser.add_argument("--names", type=str, default='data/coco.yaml', help="Names file")
     parser.add_argument("--image", "-i", type=str, help="Image file to run detection on")
-    parser.add_argument("--device", type=int, default=2, help="Image capture device to run live detection")
+    parser.add_argument("--device", type=int, default=0, help="Image capture device to run live detection")
     # Device num : v4l2-ctl --list-devices
     parser.add_argument("--stream", action='store_true', help="Process a stream")
     parser.add_argument("--bench_coco", action='store_true', help="Process a stream")
@@ -143,10 +143,14 @@ if __name__ == "__main__":
         total_times = []
         cam = cv2.VideoCapture(args.device)
         
+        cam.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+        cam.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+        
         while True:
           try:
             res, image = cam.read()
-            
+            height, width = image.shape[:2]
+            # new_img_size = (width, width)
             if res is False:
                 logger.error("Empty image received")
                 break
@@ -161,7 +165,7 @@ if __name__ == "__main__":
                 distCoeffs = np.array([-4.4977607383629226e-01, -3.0529616557684319e-01,
                                     -3.9021603448837856e-03, -2.8130335366792153e-03,
                                     1.2224960045867554e+00])
-                image = cv2.undistort(image, cameraMatrix, distCoeffs)
+                image = cv2.undistort(image, cameraMatrix, distCoeffs) #, None, new_img_size)
 
                 total_times = []
                 full_image, net_image, pad = get_image_tensor(image, input_size[0])
