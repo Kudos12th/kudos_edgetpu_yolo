@@ -275,12 +275,12 @@ class EdgeTPUModel:
                     #msg.layout.dim[1].stride = 3
                     
                     if xyxy[0]<640 and xyxy[1]<480:
-                    	xyxy.append(conf)
-                    	msg.data=xyxy
-                    	if self.names[c]=="ball":
-                    	   xyxy.append(1)
-                    	   msg.data=xyxy
-                    	   pub.publish(msg)
+                        xyxy.append(conf)
+                        msg.data=xyxy
+                        if self.names[c]=="ball":
+                            xyxy.append(1)
+                            msg.data=xyxy
+                            pub.publish(msg)
           		         
                     #msg=Float32()
                     #msg.data=xyxy[0]
@@ -301,7 +301,7 @@ class EdgeTPUModel:
             if save_img:
               cv2.imwrite(output_path, output_image)
             
-        return det,output_image
+        return det,output_image, xyxy
     
     #def bounding_box(self):
     #	output[]=self.get_scaled_coords(det[:,:4], output_image, pad)

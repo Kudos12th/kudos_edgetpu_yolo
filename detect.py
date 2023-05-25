@@ -176,8 +176,53 @@ if __name__ == "__main__":
                 fps = 1.0/total_times.mean()
                 # kudos_vision.py publish
                 # Publish
-                model.process_predictions(pred[0], full_image, pad)
-                _,predimage=model.process_predictions(pred[0], full_image, pad)
+                # model.process_predictions(pred[0], full_image, pad)
+
+                _,predimage, bb=model.process_predictions(pred[0], full_image, pad)
+                print("bounding box : ", bb)
+
+                if len(bb) > 1:
+                    x1, y1, x2, y2 = map(int, bb[:4])
+                    roi = image[y1:y2, x1:x2]
+
+                    # Convert ROI to grayscale
+                    gray_roi = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+
+                    # Create a binary mask for white ball
+                    _, mask = cv2.threshold(gray_roi, 200, 255, cv2.THRESH_BINARY)
+
+                    # Perform bitwise AND operation between the mask and ROI
+                    masked_roi = cv2.bitwise_and(roi, roi, mask=mask)
+
+                    # Contour detection
+                    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+                    # Process each contour
+                    for contour in contours:
+                        # Contour length
+                        perimeter = cv2.arcLength(contour, True)
+                        
+                        # Approximate polygon of the contour
+                        approx = cv2.approxPolyDP(contour, 0.03 * perimeter, True)
+                        
+                        # Number of vertices in the approximated polygon
+                        vertices = len(approx)
+                        
+                        # Fit the minimum enclosing ellipse around the approximated polygon
+                        if vertices >= 8:
+                            # Fit ellipse
+                            ellipse = cv2.fitEllipse(contour)
+                            
+                            # Calculate ellipse area
+                            area = np.pi * (ellipse[1][0] / 2) * (ellipse[1][1] / 2)
+                            print("Area of the ball:", area)
+                            
+                        # If it's a circle
+                        elif vertices >= 5:
+                            # Calculate circle area
+                            area = cv2.contourArea(contour)
+                            print("Area of the ball:", area)
+
                 priROS.yolo_result_img_talker(predimage,fps)
                 tinference, tnms = model.get_last_inference_time()
                 logger.info("Frame done in {}".format(tinference+tnms))

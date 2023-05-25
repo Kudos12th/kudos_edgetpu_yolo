@@ -2,6 +2,7 @@ import time
 import os
 import sys
 import logging
+import rospy
 
 import yaml
 import numpy as np
@@ -12,9 +13,14 @@ import cv2
 import json
 
 from utils import plot_one_box, Colors, get_image_tensor
+from std_msgs.msg import Float32MultiArray,MultiArrayDimension
+from std_msgs.msg import Float32
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("EdgeTPUModel")
+#rospy.init_node('bounding_box_pub', anonymous = True)
+pub=rospy.Publisher('bounding_box_pub',Float32MultiArray,queue_size=1000)
+#pub=rospy.Publisher('bounding_box_pub',Float32,queue_size=1000)
 
 class EdgeTPUModel:
 
@@ -220,18 +226,18 @@ class EdgeTPUModel:
             y2 = min(out_h, y2)
             
             out.append((x1, y1, x2, y2))
-        
+            print(x1)
         return np.array(out).astype(int)
 
     def process_predictions(self, det, output_image, pad, output_path="detection.jpg", save_img=True, save_txt=True, hide_labels=False, hide_conf=False):
         """
         Process predictions and optionally output an image with annotations
         """
+        xyxy = (0,)
         if len(det):
             # Rescale boxes from img_size to im0 size
             # x1, y1, x2, y2=
             det[:, :4] = self.get_scaled_coords(det[:,:4], output_image, pad)
-            output = {}
             base, ext = os.path.splitext(output_path)
             
             s = ""
@@ -258,6 +264,30 @@ class EdgeTPUModel:
                     label = None if hide_labels else (self.names[c] if hide_conf else f'{self.names[c]} {conf:.2f}')
                     output_image = plot_one_box(xyxy, output_image, label=label, color=self.colors(c, True))
                 if save_txt:
+                    msg=Float32MultiArray()
+                    #msg.layout.dim.append(MultiArrayDimension())
+                    #msg.layout.dim[0].label = "rows"
+                    #msg.layout.dim[0].size = 1000
+                    #msg.layout.dim[0].stride = 2
+                    #msg.layout.dim.append(MultiArrayDimension())
+                    #msg.layout.dim[1].label = "cols"
+                    #msg.layout.dim[1].size = 4
+                    #msg.layout.dim[1].stride = 3
+                    
+                    if xyxy[0]<640 and xyxy[1]<480:
+                        xyxy.append(conf)
+                        msg.data=xyxy
+                        if self.names[c]=="ball":
+                            xyxy.append(1)
+                            msg.data=xyxy
+                            pub.publish(msg)
+          		         
+                    #msg=Float32()
+                    #msg.data=xyxy[0]
+                    #pub.publish(msg)
+                    #rate.sleep()
+                    # print(xyxy)
+                    # print(conf)
                     output[base] = {}
                     output[base]['box'] = xyxy
                     output[base]['conf'] = conf
@@ -270,5 +300,10 @@ class EdgeTPUModel:
                    json.dump(output, f, indent=1)
             if save_img:
               cv2.imwrite(output_path, output_image)
-            
-        return det,output_image
+        
+        # print("model : ", output)
+        return det,output_image, xyxy
+    
+    #def bounding_box(self):
+    #	output[]=self.get_scaled_coords(det[:,:4], output_image, pad)
+    #	return np.array(output)
