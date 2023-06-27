@@ -16,7 +16,7 @@ from sensor_msgs.msg import CompressedImage
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-from edgetpumodel import EdgeTPUModel
+from edgetpumodel_change import EdgeTPUModel
 from utils import resize_and_pad, get_image_tensor, save_one_json, coco80_to_coco91_class
 class priROS:
     def __init__(self):

@@ -233,6 +233,7 @@ class EdgeTPUModel:
         """
         Process predictions and optionally output an image with annotations
         """
+        xyxy = []
         if len(det):
             # Rescale boxes from img_size to im0 size
             # x1, y1, x2, y2=
@@ -286,8 +287,8 @@ class EdgeTPUModel:
                     #msg.data=xyxy[0]
                     #pub.publish(msg)
                     #rate.sleep()
-                    print(xyxy)
-                    print(conf)
+                    print("xyxy: ", xyxy)
+                    print("conf: ", conf)
                     output[base] = {}
                     output[base]['box'] = xyxy
                     output[base]['conf'] = conf
