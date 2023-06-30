@@ -1,7 +1,7 @@
 import cv2
 
 def save_camera_images():
-    cap = cv2.VideoCapture(4)
+    cap = cv2.VideoCapture(0)
 
     # 카메라 해상도 설정
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)

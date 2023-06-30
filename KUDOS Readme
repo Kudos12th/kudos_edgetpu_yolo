@@ -1,6 +1,10 @@
 [TOC]
-
-python3 detect.py --model best-int8_edgetpu.tflite --stream
+1. roscore
+2. camera
+    parser.add_argument("--device", type=int, default=0, help="Image capture device to run live detection")
+3. 
+4. coral
+5. python3 detect.py --model best-int8_edgetpu.tflite --stream
 
 <tflite>
 yolov5s_i384_b32_e160_edgetpu.tflite => best-int8_edgetpu.tflite
