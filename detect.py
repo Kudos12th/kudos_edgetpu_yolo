@@ -41,7 +41,7 @@ if __name__ == "__main__":
     parser.add_argument("--iou_thresh", type=float, default=0.45, help="NMS IOU threshold")
     parser.add_argument("--names", type=str, default='data/coco.yaml', help="Names file")
     parser.add_argument("--image", "-i", type=str, help="Image file to run detection on")
-    parser.add_argument("--device", type=int, default=0, help="Image capture device to run live detection")
+    parser.add_argument("--device", type=int, default=2, help="Image capture device to run live detection")
     # Device num : v4l2-ctl --list-devices
     parser.add_argument("--stream", action='store_true', help="Process a stream")
     parser.add_argument("--bench_coco", action='store_true', help="Process a stream")
@@ -70,6 +70,10 @@ if __name__ == "__main__":
     classes = None
     agnostic_nms = False
     max_det = 1000
+
+    # Set the desired frame size
+    desired_width = 640
+    desired_height = 480
 
     if args.bench_speed:
         logger.info("Performing test run")
@@ -143,8 +147,9 @@ if __name__ == "__main__":
         total_times = []
         cam = cv2.VideoCapture(args.device)
         
-        cam.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-        cam.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+        # Set the camera frame size
+        cam.set(cv2.CAP_PROP_FRAME_WIDTH, desired_width)
+        cam.set(cv2.CAP_PROP_FRAME_HEIGHT, desired_height)
         
         while True:
           try:
@@ -157,14 +162,14 @@ if __name__ == "__main__":
             else:
                 
                 # cameraMatrix 정의
-                cameraMatrix = np.array([[1.4978189295590093e+02, 0., 6.5421863971076243e+02],
-                                        [0., 1.5099775078577295e+02, 3.9787318490653502e+02],
+                cameraMatrix = np.array([[9.4088597780774421e+02, 0., 3.7770158111216648e+02],
+                                        [0., 9.4925081349933703e+02, 3.2918621409818121e+02],
                                         [0., 0., 1.]])
 
                 # distCoeffs 정의
-                distCoeffs = np.array([-3.9835927739219137e-02, 2.2530579367275368e-03,
-                                    2.3268517149617390e-04, -2.5717762051647055e-03,
-                                    -8.4897976366059546e-05])
+                distCoeffs = np.array([-4.4977607383629226e-01, -3.0529616557684319e-01,
+                                    -3.9021603448837856e-03, -2.8130335366792153e-03,
+                                    1.2224960045867554e+00])
                 image = cv2.undistort(image, cameraMatrix, distCoeffs) #, None, new_img_size)
 
                 total_times = []
@@ -197,8 +202,18 @@ if __name__ == "__main__":
                     # Contour detection
                     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
+                    print(contours)
+
                     # Process each contour
                     for contour in contours:
+                            
+                        # Adjust the contour coordinates to the original image
+                        contour[:, 0, 0] += x1
+                        contour[:, 0, 1] += y1
+                        
+                        # Draw each contour in green color (0, 255, 0) with a thickness of 2
+                        cv2.drawContours(full_image, [contour], -1, (0, 255, 0), 2)
+
                         # Contour length
                         perimeter = cv2.arcLength(contour, True)
                         
@@ -227,6 +242,8 @@ if __name__ == "__main__":
                 tinference, tnms = model.get_last_inference_time()
                 logger.info("Frame done in {}".format(tinference+tnms))
           except KeyboardInterrupt:
+            cam.release()
+
             break
           
         cam.release()

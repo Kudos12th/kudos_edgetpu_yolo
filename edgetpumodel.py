@@ -286,8 +286,8 @@ class EdgeTPUModel:
                     #msg.data=xyxy[0]
                     #pub.publish(msg)
                     #rate.sleep()
-                    # print(xyxy)
-                    # print(conf)
+                    print("xyxy: ", xyxy)
+                    print("conf: ", conf)
                     output[base] = {}
                     output[base]['box'] = xyxy
                     output[base]['conf'] = conf
@@ -300,8 +300,7 @@ class EdgeTPUModel:
                    json.dump(output, f, indent=1)
             if save_img:
               cv2.imwrite(output_path, output_image)
-        
-        # print("model : ", output)
+            
         return det,output_image, xyxy
     
     #def bounding_box(self):
