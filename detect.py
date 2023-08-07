@@ -199,46 +199,38 @@ if __name__ == "__main__":
                     # Perform bitwise AND operation between the mask and ROI
                     masked_roi = cv2.bitwise_and(roi, roi, mask=mask)
 
-                    # Contour detection
-                    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                    # Detect circles using HoughCircles on the ROI
+                    circles = cv2.HoughCircles(
+                        gray_roi,
+                        cv2.HOUGH_GRADIENT,
+                        dp=1,  # Inverse ratio of the accumulator resolution to the image resolution
+                        minDist=20,  # Minimum distance between the centers of the detected circles
+                        param1=50,  # Upper threshold for the internal Canny edge detector
+                        param2=30,  # Threshold for center detection
+                        minRadius=5,  # Minimum radius of the detected circles
+                        maxRadius=100  # Maximum radius of the detected circles
+                    )
 
-                    print(contours)
+                    # Draw the detected circles on the ROI
+                    if circles is not None:
+                        circles = np.uint16(np.around(circles))
+                        for circle in circles[0, :]:
+                            center = (circle[0], circle[1])
+                            radius = circle[2]
+                            # Draw the circle center
+                            cv2.circle(roi, center, 1, (0, 100, 100), 3)
+                            # Draw the circle outline
+                            cv2.circle(roi, center, radius, (255, 0, 255), 3)
 
-                    # Process each contour
-                    for contour in contours:
-                            
-                        # Adjust the contour coordinates to the original image
-                        contour[:, 0, 0] += x1
-                        contour[:, 0, 1] += y1
-                        
-                        # Draw each contour in green color (0, 255, 0) with a thickness of 2
-                        cv2.drawContours(full_image, [contour], -1, (0, 255, 0), 2)
-
-                        # Contour length
-                        perimeter = cv2.arcLength(contour, True)
-                        
-                        # Approximate polygon of the contour
-                        approx = cv2.approxPolyDP(contour, 0.03 * perimeter, True)
-                        
-                        # Number of vertices in the approximated polygon
-                        vertices = len(approx)
-                        
-                        # Fit the minimum enclosing ellipse around the approximated polygon
-                        if vertices >= 8:
-                            # Fit ellipse
-                            ellipse = cv2.fitEllipse(contour)
-                            
-                            # Calculate ellipse area
-                            area = np.pi * (ellipse[1][0] / 2) * (ellipse[1][1] / 2)
-                            print("Area of the ball:", area)
-                            
-                        # If it's a circle
-                        elif vertices >= 5:
                             # Calculate circle area
-                            area = cv2.contourArea(contour)
+                            area = np.pi * radius ** 2
                             print("Area of the ball:", area)
 
-                priROS.yolo_result_img_talker(predimage,fps)
+                    # Replace the processed ROI back into the full_image
+                    full_image[y1:y2, x1:x2] = roi
+
+                # Additional code to handle the end of the program, release the camera, and log the final inference time
+                priROS.yolo_result_img_talker(predimage, fps)
                 tinference, tnms = model.get_last_inference_time()
                 logger.info("Frame done in {}".format(tinference+tnms))
           except KeyboardInterrupt:
