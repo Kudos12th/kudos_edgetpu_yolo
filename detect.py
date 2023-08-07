@@ -13,8 +13,6 @@ import cv2
 import yaml
 import timeit
 from sensor_msgs.msg import CompressedImage
-import matplotlib.pyplot as plt
-
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -147,7 +145,8 @@ if __name__ == "__main__":
     elif args.stream:
         logger.info("Opening stream on device: {}".format(args.device))
         total_times = []
-        radii_history = []  # List to store the radii of detected circles over time        
+        constant = 40800
+        
         cam = cv2.VideoCapture(args.device)
         
         # Set the camera frame size
@@ -156,7 +155,7 @@ if __name__ == "__main__":
         
         start_time = time.time()  # Record the start time
 
-        while time.time() - start_time < 20:  # Run the loop for 20 seconds
+        while True:  # Run the loop for 20 seconds
           try:
             res, image = cam.read()
             height, width = image.shape[:2]
@@ -227,7 +226,9 @@ if __name__ == "__main__":
 
                         center = (largest_circle[0], largest_circle[1])
                         radius = largest_circle[2]
-                        radii_history.append(radius)  # Store the radius value in the history
+
+                        # 거리 계산
+                        distance = constant / radius
 
                         # Draw the circle center
                         cv2.circle(roi, center, 1, (0, 100, 100), 3)
@@ -236,7 +237,7 @@ if __name__ == "__main__":
 
                         # Calculate circle area
                         area = np.pi * radius ** 2
-                        print("Area of the ball:", area)
+                        # print("Area of the ball:", area)
 
                     # Replace the processed ROI back into the full_image
                     full_image[y1:y2, x1:x2] = roi
@@ -252,11 +253,4 @@ if __name__ == "__main__":
           except:
             pass
 
-        # Plot the radii of detected circles over time
-        plt.plot(radii_history)
-        plt.xlabel('Frame')
-        plt.ylabel('Radius')
-        plt.title('Changes in Detected Circle Radius over Time')
-        plt.grid(True)
-        plt.show()
         cam.release()
