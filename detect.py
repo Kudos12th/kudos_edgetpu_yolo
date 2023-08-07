@@ -13,6 +13,8 @@ import cv2
 import yaml
 import timeit
 from sensor_msgs.msg import CompressedImage
+import matplotlib.pyplot as plt
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -145,13 +147,16 @@ if __name__ == "__main__":
     elif args.stream:
         logger.info("Opening stream on device: {}".format(args.device))
         total_times = []
+        radii_history = []  # List to store the radii of detected circles over time        
         cam = cv2.VideoCapture(args.device)
         
         # Set the camera frame size
         cam.set(cv2.CAP_PROP_FRAME_WIDTH, desired_width)
         cam.set(cv2.CAP_PROP_FRAME_HEIGHT, desired_height)
         
-        while True:
+        start_time = time.time()  # Record the start time
+
+        while time.time() - start_time < 20:  # Run the loop for 20 seconds
           try:
             res, image = cam.read()
             height, width = image.shape[:2]
@@ -188,6 +193,10 @@ if __name__ == "__main__":
 
                 if len(bb) > 1:
                     x1, y1, x2, y2 = map(int, bb[:4])
+                    x1 -= 10
+                    y1 -= 10
+                    x2 += 10
+                    y2 += 10
                     roi = image[y1:y2, x1:x2]
 
                     # Convert ROI to grayscale
@@ -208,23 +217,26 @@ if __name__ == "__main__":
                         param1=50,  # Upper threshold for the internal Canny edge detector
                         param2=30,  # Threshold for center detection
                         minRadius=5,  # Minimum radius of the detected circles
-                        maxRadius=100  # Maximum radius of the detected circles
+                        maxRadius=200  # Maximum radius of the detected circles
                     )
 
-                    # Draw the detected circles on the ROI
+                    # Draw the largest two detected circles on the ROI
                     if circles is not None:
                         circles = np.uint16(np.around(circles))
-                        for circle in circles[0, :]:
-                            center = (circle[0], circle[1])
-                            radius = circle[2]
-                            # Draw the circle center
-                            cv2.circle(roi, center, 1, (0, 100, 100), 3)
-                            # Draw the circle outline
-                            cv2.circle(roi, center, radius, (255, 0, 255), 3)
+                        largest_circle = max(circles[0, :], key=lambda x: x[2])  # Select the largest circle by radius
 
-                            # Calculate circle area
-                            area = np.pi * radius ** 2
-                            print("Area of the ball:", area)
+                        center = (largest_circle[0], largest_circle[1])
+                        radius = largest_circle[2]
+                        radii_history.append(radius)  # Store the radius value in the history
+
+                        # Draw the circle center
+                        cv2.circle(roi, center, 1, (0, 100, 100), 3)
+                        # Draw the circle outline
+                        cv2.circle(roi, center, radius, (255, 0, 255), 3)
+
+                        # Calculate circle area
+                        area = np.pi * radius ** 2
+                        print("Area of the ball:", area)
 
                     # Replace the processed ROI back into the full_image
                     full_image[y1:y2, x1:x2] = roi
@@ -233,15 +245,18 @@ if __name__ == "__main__":
                 priROS.yolo_result_img_talker(predimage, fps)
                 tinference, tnms = model.get_last_inference_time()
                 logger.info("Frame done in {}".format(tinference+tnms))
+                
           except KeyboardInterrupt:
             cam.release()
-
             break
-          
+          except:
+            pass
+
+        # Plot the radii of detected circles over time
+        plt.plot(radii_history)
+        plt.xlabel('Frame')
+        plt.ylabel('Radius')
+        plt.title('Changes in Detected Circle Radius over Time')
+        plt.grid(True)
+        plt.show()
         cam.release()
-            
-        
-
-        
-    
-
