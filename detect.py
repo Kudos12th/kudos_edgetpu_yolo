@@ -13,26 +13,32 @@ import cv2
 import yaml
 import timeit
 from sensor_msgs.msg import CompressedImage
+from std_msgs.msg import Float64
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 from edgetpumodel_change import EdgeTPUModel
-from utils import resize_and_pad, get_image_tensor, save_one_json, coco80_to_coco91_class, exponential_moving_average, remove_outliers
+from utils import resize_and_pad, get_image_tensor, save_one_json, coco80_to_coco91_class, StreamingDataProcessor
 
 class priROS:
     def __init__(self):
         rospy.init_node('kudos_vision', anonymous = False)
         self.yolo_result_img_pub = rospy.Publisher("/output/image_raw2/compressed", CompressedImage, queue_size = 1)
-    
-    def yolo_result_img_talker(self, image_np, fps):
+        self.distance_pub = rospy.Publisher("/distance_topic", Float64, queue_size=1)  # Adjust topic name and message type
+
+    def yolo_result_img_talker(self, image_np,fps):
         import cv2
-        print(np.shape(image_np)) 
         print("Mean FPS: {:1.2f}".format(fps))
         msg = CompressedImage()
         msg.header.stamp = rospy.Time.now()
         msg.format = "jpeg"
         msg.data = np.array(cv2.imencode('.jpg', image_np)[1]).tostring()
         self.yolo_result_img_pub.publish(msg)
+
+    def distance_talker(self, distance):
+        # Publish ema_distance as a Float64 message
+        self.distance_pub.publish(Float64(distance))  # Adjust message type if needed
 
 if __name__ == "__main__":
  
@@ -80,7 +86,74 @@ if __name__ == "__main__":
     desired_width = 640
     desired_height = 480
 
-    if args.stream:
+    if args.bench_speed:
+        logger.info("Performing test run")
+        n_runs = 100
+        
+        
+        inference_times = []
+        nms_times = []
+        total_times = []
+        
+        for i in tqdm(range(n_runs)):
+            x = (255*np.random.random((3,*input_size))).astype(np.float32)
+            
+            pred = model.forward(x)
+            tinference, tnms = model.get_last_inference_time()
+            
+            inference_times.append(tinference)
+            nms_times.append(tnms)
+            total_times.append(tinference + tnms)
+            
+        inference_times = np.array(inference_times)
+        nms_times = np.array(nms_times)
+        total_times = np.array(total_times)
+            
+        logger.info("Inference time (EdgeTPU): {:1.2f} +- {:1.2f} ms".format(inference_times.mean()/1e-3, inference_times.std()/1e-3))
+        logger.info("NMS time (CPU): {:1.2f} +- {:1.2f} ms".format(nms_times.mean()/1e-3, nms_times.std()/1e-3))
+        fps = 1.0/total_times.mean()
+        logger.info("Mean FPS: {:1.2f}".format(fps))
+
+    elif args.bench_image:
+        logger.info("Testing on Zidane image")
+        model.predict("./data/images/0483.jpg")
+
+    elif args.bench_coco:
+        logger.info("Testing on COCO dataset")
+        
+        model.conf_thresh = 0.001
+        model.iou_thresh = 0.65
+        
+        coco_glob = os.path.join(args.coco_path, "*.jpg")
+        images = glob.glob(coco_glob)
+        
+        logger.info("Looking for: {}".format(coco_glob))
+        ids = [int(os.path.basename(i).split('.')[0]) for i in images]
+        
+        out_path = "./coco_eval"
+        os.makedirs("./coco_eval", exist_ok=True)
+        
+        logger.info("Found {} images".format(len(images)))
+        
+        class_map = coco80_to_coco91_class()
+        
+        predictions = []
+        
+        for image in tqdm(images):
+            res = model.predict(image, save_img=False, save_txt=False)
+            save_one_json(res, predictions, Path(image), class_map)
+            
+        pred_json = os.path.join(out_path,
+                    "{}_predictions.json".format(os.path.basename(args.model)))
+        
+        with open(pred_json, 'w') as f:
+            json.dump(predictions, f,indent=1)
+        
+    elif args.image is not None:
+        logger.info("Testing on user image: {}".format(args.image))
+        model.predict(args.image)
+
+    elif args.stream:
         logger.info("Opening stream on device: {}".format(args.device))
         total_times = []
         constant = 40800
@@ -92,6 +165,9 @@ if __name__ == "__main__":
         cam.set(cv2.CAP_PROP_FRAME_HEIGHT, desired_height)
         
         start_time = time.time()  # Record the start time
+
+        # Create a StreamingDataProcessor instance
+        data_processor = StreamingDataProcessor(window_size=10, alpha=0.2, z_threshold=3)
 
         while True:  # Run the loop for 20 seconds
           try:
@@ -126,13 +202,10 @@ if __name__ == "__main__":
                 # model.process_predictions(pred[0], full_image, pad)
 
                 _,predimage, bb=model.process_predictions(pred[0], full_image, pad)
+                # print("bounding box : ", bb)
 
                 if len(bb) > 1:
                     x1, y1, x2, y2 = map(int, bb[:4])
-                    x1 -= 10
-                    y1 -= 10
-                    x2 += 10
-                    y2 += 10
                     roi = image[y1:y2, x1:x2]
 
                     # Convert ROI to grayscale
@@ -153,7 +226,7 @@ if __name__ == "__main__":
                         param1=50,  # Upper threshold for the internal Canny edge detector
                         param2=30,  # Threshold for center detection
                         minRadius=5,  # Minimum radius of the detected circles
-                        maxRadius=200  # Maximum radius of the detected circles
+                        maxRadius=100  # Maximum radius of the detected circles
                     )
 
                     # Draw the largest two detected circles on the ROI
@@ -164,17 +237,22 @@ if __name__ == "__main__":
                         center = (largest_circle[0], largest_circle[1])
                         radius = largest_circle[2]
 
-                        # 거리 계산
-                        distance = constant / radius
-
                         # Draw the circle center
                         cv2.circle(roi, center, 1, (0, 100, 100), 3)
                         # Draw the circle outline
                         cv2.circle(roi, center, radius, (255, 0, 255), 3)
 
-                        # Calculate circle area
-                        area = np.pi * radius ** 2
-                        # print("Area of the ball:", area)
+                        # 거리 계산
+                        distance = constant / radius
+
+                        # Process new distance data
+                        data_processor.process_new_data(distance)
+
+                        # Get EMA distance
+                        ema_distance = data_processor.get_ema_distance()
+                        priROS.distance_talker(ema_distance)
+                        # print("Distance : ", distance)
+                        # print("EMA Distance : ", ema_distance)
 
                     # Replace the processed ROI back into the full_image
                     full_image[y1:y2, x1:x2] = roi
@@ -187,8 +265,5 @@ if __name__ == "__main__":
           except KeyboardInterrupt:
             cam.release()
             break
-        #   except Exception as e:       
-        #     print(e)
-        #     pass
 
         cam.release()
