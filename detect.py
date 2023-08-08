@@ -13,24 +13,33 @@ import cv2
 import yaml
 import timeit
 from sensor_msgs.msg import CompressedImage
+from std_msgs.msg import Float64
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-from edgetpumodel import EdgeTPUModel
-from utils import resize_and_pad, get_image_tensor, save_one_json, coco80_to_coco91_class
+from edgetpumodel_change import EdgeTPUModel
+from utils import resize_and_pad, get_image_tensor, save_one_json, coco80_to_coco91_class, StreamingDataProcessor
+
 class priROS:
     def __init__(self):
         rospy.init_node('kudos_vision', anonymous = False)
         self.yolo_result_img_pub = rospy.Publisher("/output/image_raw2/compressed", CompressedImage, queue_size = 1)
-    def yolo_result_img_talker(self, image_np,cam):
+        self.distance_pub = rospy.Publisher("/distance_topic", Float64, queue_size=1)  # Adjust topic name and message type
+
+    def yolo_result_img_talker(self, image_np,fps):
         import cv2
-        print(np.shape(image_np)) 
         print("Mean FPS: {:1.2f}".format(fps))
         msg = CompressedImage()
         msg.header.stamp = rospy.Time.now()
         msg.format = "jpeg"
         msg.data = np.array(cv2.imencode('.jpg', image_np)[1]).tostring()
         self.yolo_result_img_pub.publish(msg)
+
+    def distance_talker(self, distance):
+        # Publish ema_distance as a Float64 message
+        self.distance_pub.publish(Float64(distance))  # Adjust message type if needed
+
 if __name__ == "__main__":
  
     parser = argparse.ArgumentParser("EdgeTPU test runner")
@@ -41,7 +50,7 @@ if __name__ == "__main__":
     parser.add_argument("--iou_thresh", type=float, default=0.45, help="NMS IOU threshold")
     parser.add_argument("--names", type=str, default='data/coco.yaml', help="Names file")
     parser.add_argument("--image", "-i", type=str, help="Image file to run detection on")
-    parser.add_argument("--device", type=int, default=0, help="Image capture device to run live detection")
+    parser.add_argument("--device", type=int, default=2, help="Image capture device to run live detection")
     # Device num : v4l2-ctl --list-devices
     parser.add_argument("--stream", action='store_true', help="Process a stream")
     parser.add_argument("--bench_coco", action='store_true', help="Process a stream")
@@ -70,6 +79,12 @@ if __name__ == "__main__":
     classes = None
     agnostic_nms = False
     max_det = 1000
+
+    ema_distance = None
+
+    # Set the desired frame size
+    desired_width = 640
+    desired_height = 480
 
     if args.bench_speed:
         logger.info("Performing test run")
@@ -141,12 +156,20 @@ if __name__ == "__main__":
     elif args.stream:
         logger.info("Opening stream on device: {}".format(args.device))
         total_times = []
+        constant = 40800
+        
         cam = cv2.VideoCapture(args.device)
         
-        cam.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-        cam.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+        # Set the camera frame size
+        cam.set(cv2.CAP_PROP_FRAME_WIDTH, desired_width)
+        cam.set(cv2.CAP_PROP_FRAME_HEIGHT, desired_height)
         
-        while True:
+        start_time = time.time()  # Record the start time
+
+        # Create a StreamingDataProcessor instance
+        data_processor = StreamingDataProcessor(window_size=10, alpha=0.2, z_threshold=3)
+
+        while True:  # Run the loop for 20 seconds
           try:
             res, image = cam.read()
             height, width = image.shape[:2]
@@ -176,18 +199,71 @@ if __name__ == "__main__":
                 fps = 1.0/total_times.mean()
                 # kudos_vision.py publish
                 # Publish
-                model.process_predictions(pred[0], full_image, pad)
-                _,predimage=model.process_predictions(pred[0], full_image, pad)
-                priROS.yolo_result_img_talker(predimage,fps)
+                # model.process_predictions(pred[0], full_image, pad)
+
+                _,predimage, bb=model.process_predictions(pred[0], full_image, pad)
+                # print("bounding box : ", bb)
+
+                if len(bb) > 1:
+                    x1, y1, x2, y2 = map(int, bb[:4])
+                    roi = image[y1:y2, x1:x2]
+
+                    # Convert ROI to grayscale
+                    gray_roi = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+
+                    # Create a binary mask for white ball
+                    _, mask = cv2.threshold(gray_roi, 200, 255, cv2.THRESH_BINARY)
+
+                    # Perform bitwise AND operation between the mask and ROI
+                    masked_roi = cv2.bitwise_and(roi, roi, mask=mask)
+
+                    # Detect circles using HoughCircles on the ROI
+                    circles = cv2.HoughCircles(
+                        gray_roi,
+                        cv2.HOUGH_GRADIENT,
+                        dp=1,  # Inverse ratio of the accumulator resolution to the image resolution
+                        minDist=20,  # Minimum distance between the centers of the detected circles
+                        param1=50,  # Upper threshold for the internal Canny edge detector
+                        param2=30,  # Threshold for center detection
+                        minRadius=5,  # Minimum radius of the detected circles
+                        maxRadius=100  # Maximum radius of the detected circles
+                    )
+
+                    # Draw the largest two detected circles on the ROI
+                    if circles is not None:
+                        circles = np.uint16(np.around(circles))
+                        largest_circle = max(circles[0, :], key=lambda x: x[2])  # Select the largest circle by radius
+
+                        center = (largest_circle[0], largest_circle[1])
+                        radius = largest_circle[2]
+
+                        # Draw the circle center
+                        cv2.circle(roi, center, 1, (0, 100, 100), 3)
+                        # Draw the circle outline
+                        cv2.circle(roi, center, radius, (255, 0, 255), 3)
+
+                        # 거리 계산
+                        distance = constant / radius
+
+                        # Process new distance data
+                        data_processor.process_new_data(distance)
+
+                        # Get EMA distance
+                        ema_distance = data_processor.get_ema_distance()
+                        priROS.distance_talker(ema_distance)
+                        # print("Distance : ", distance)
+                        # print("EMA Distance : ", ema_distance)
+
+                    # Replace the processed ROI back into the full_image
+                    full_image[y1:y2, x1:x2] = roi
+
+                # Additional code to handle the end of the program, release the camera, and log the final inference time
+                priROS.yolo_result_img_talker(predimage, fps)
                 tinference, tnms = model.get_last_inference_time()
                 logger.info("Frame done in {}".format(tinference+tnms))
+                
           except KeyboardInterrupt:
+            cam.release()
             break
-          
+
         cam.release()
-            
-        
-
-        
-    
-

@@ -113,3 +113,47 @@ def save_one_json(predn, jdict, path, class_map):
                       'bbox': [round(x, 3) for x in b],
                       'score': round(p[4], 5)})
 
+
+# Additional code for EMA calculation
+def exponential_moving_average(current_value, previous_ema):
+    # Initialize variables for EMA
+    alpha = 0.2
+    if previous_ema is None:
+        return current_value
+    else:
+        return (1 - alpha) * np.mean(previous_ema) + alpha * np.mean(current_value)
+
+# Additional code for removing outliers using Z-score
+def remove_outliers(data, z_threshold=3):
+    mean = np.mean(data)
+    std = np.std(data)
+    z_scores = np.abs((data - mean) / std)
+    
+    # Z-score가 임계값보다 작은 데이터만 유지하여 이상치 제거
+    filtered_data = data[z_scores < z_threshold]
+    
+    return filtered_data
+
+class StreamingDataProcessor:
+    def __init__(self, window_size, alpha, z_threshold):
+        self.window_size = window_size
+        self.data_buffer = []
+        self.alpha = alpha
+        self.ema_distance = None
+        self.z_threshold = z_threshold
+
+    def process_new_data(self, new_distance):
+        self.data_buffer.append(new_distance)
+
+        if len(self.data_buffer) >= self.window_size:
+            # Remove outliers using Z-score
+            data_no_outliers = remove_outliers(np.array(self.data_buffer), self.z_threshold)
+            
+            # EMA calculation for distance (using data without outliers)
+            self.ema_distance = exponential_moving_average(data_no_outliers, self.ema_distance)
+            
+            # Remove oldest data to maintain window size
+            self.data_buffer.pop(0)
+
+    def get_ema_distance(self):
+        return self.ema_distance
