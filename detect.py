@@ -12,6 +12,8 @@ from tqdm import tqdm
 import cv2
 import yaml
 import timeit
+from collections import deque
+
 from sensor_msgs.msg import CompressedImage
 from std_msgs.msg import Float64
 
@@ -21,6 +23,10 @@ logger = logging.getLogger(__name__)
 from edgetpumodel_change import EdgeTPUModel
 from utils import resize_and_pad, get_image_tensor, save_one_json, coco80_to_coco91_class, StreamingDataProcessor
 
+dist_save = np.array([])
+max_circle_queue_size = 20 
+detected_circles_queue = deque(maxlen=max_circle_queue_size)
+
 class priROS:
     def __init__(self):
         rospy.init_node('kudos_vision', anonymous = False)
@@ -29,7 +35,7 @@ class priROS:
 
     def yolo_result_img_talker(self, image_np,fps):
         import cv2
-        print("Mean FPS: {:1.2f}".format(fps))
+        # print("Mean FPS: {:1.2f}".format(fps))
         msg = CompressedImage()
         msg.header.stamp = rospy.Time.now()
         msg.format = "jpeg"
@@ -38,6 +44,7 @@ class priROS:
 
     def distance_talker(self, distance):
         # Publish ema_distance as a Float64 message
+        # print(Float64(distance))
         self.distance_pub.publish(Float64(distance))  # Adjust message type if needed
 
 if __name__ == "__main__":
@@ -167,7 +174,7 @@ if __name__ == "__main__":
         start_time = time.time()  # Record the start time
 
         # Create a StreamingDataProcessor instance
-        data_processor = StreamingDataProcessor(window_size=10, alpha=0.2, z_threshold=3)
+        data_processor = StreamingDataProcessor(window_size=10, alpha=0.2, z_threshold=1)
 
         while True:  # Run the loop for 20 seconds
           try:
@@ -243,17 +250,22 @@ if __name__ == "__main__":
                         cv2.circle(roi, center, radius, (255, 0, 255), 3)
 
                         # 거리 계산
-                        distance = constant / radius
+                        distance = radius #constant / radius
 
                         # Process new distance data
                         data_processor.process_new_data(distance)
 
                         # Get EMA distance
                         ema_distance = data_processor.get_ema_distance()
-                        priROS.distance_talker(ema_distance)
-                        # print("Distance : ", distance)
-                        # print("EMA Distance : ", ema_distance)
+                        dist_save = np.append(dist_save, ema_distance)
 
+                        priROS.distance_talker(ema_distance)
+                        try:
+                            print("raidus : ", distance)
+                            print("EMA Distance : ", ema_distance)
+                            print("dist mean : ", np.mean(dist_save))
+                        except:
+                            pass
                     # Replace the processed ROI back into the full_image
                     full_image[y1:y2, x1:x2] = roi
 

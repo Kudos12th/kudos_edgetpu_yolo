@@ -124,15 +124,18 @@ def exponential_moving_average(current_value, previous_ema):
         return (1 - alpha) * np.mean(previous_ema) + alpha * np.mean(current_value)
 
 # Additional code for removing outliers using Z-score
-def remove_outliers(data, z_threshold=3):
-    mean = np.mean(data)
-    std = np.std(data)
-    z_scores = np.abs((data - mean) / std)
-    
-    # Z-score가 임계값보다 작은 데이터만 유지하여 이상치 제거
-    filtered_data = data[z_scores < z_threshold]
-    
-    return filtered_data
+def remove_outliers(data, z_threshold=1):
+    try:
+        mean = np.mean(data)
+        std = np.std(data)
+        z_scores = np.abs((data - mean) / std)
+        
+        # Z-score가 임계값보다 작은 데이터만 유지하여 이상치 제거
+        filtered_data = data[z_scores < z_threshold]
+        
+        return filtered_data
+    except Exception as e:
+        print(e)
 
 class StreamingDataProcessor:
     def __init__(self, window_size, alpha, z_threshold):
@@ -144,16 +147,18 @@ class StreamingDataProcessor:
 
     def process_new_data(self, new_distance):
         self.data_buffer.append(new_distance)
-
-        if len(self.data_buffer) >= self.window_size:
-            # Remove outliers using Z-score
-            data_no_outliers = remove_outliers(np.array(self.data_buffer), self.z_threshold)
-            
-            # EMA calculation for distance (using data without outliers)
-            self.ema_distance = exponential_moving_average(data_no_outliers, self.ema_distance)
-            
-            # Remove oldest data to maintain window size
-            self.data_buffer.pop(0)
+        try:
+            if len(self.data_buffer) >= self.window_size:
+                # Remove outliers using Z-score
+                data_no_outliers = remove_outliers(np.array(self.data_buffer), self.z_threshold)
+                
+                # EMA calculation for distance (using data without outliers)
+                self.ema_distance = exponential_moving_average(data_no_outliers, self.ema_distance)
+                
+                # Remove oldest data to maintain window size
+                self.data_buffer.pop(0)
+        except Exception as e:
+            print(e)
 
     def get_ema_distance(self):
         return self.ema_distance
