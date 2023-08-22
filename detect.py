@@ -39,7 +39,7 @@ class priROS:
         msg = CompressedImage()
         msg.header.stamp = rospy.Time.now()
         msg.format = "jpeg"
-        msg.data = np.array(cv2.imencode('.jpg', image_np)[1]).tostring()
+        msg.data = np.array(cv2.imencode('.jpg', image_np)[1]).tobytes()
         self.yolo_result_img_pub.publish(msg)
 
     def distance_talker(self, distance):
@@ -177,105 +177,116 @@ if __name__ == "__main__":
         data_processor = StreamingDataProcessor(window_size=10, alpha=0.2, z_threshold=1)
 
         while True:  # Run the loop for 20 seconds
-          try:
-            res, image = cam.read()
-            height, width = image.shape[:2]
-            # new_img_size = (width, width)
-            if res is False:
-                logger.error("Empty image received")
+            try:
+                res, image = cam.read()
+                height, width = image.shape[:2]
+                # new_img_size = (width, width)
+                if res is False:
+                    logger.error("Empty image received")
+                    break
+                else:
+                    
+                    # cameraMatrix 정의
+                    cameraMatrix = np.array([[9.4088597780774421e+02, 0., 3.7770158111216648e+02],
+                                            [0., 9.4925081349933703e+02, 3.2918621409818121e+02],
+                                            [0., 0., 1.]])
+
+                    # distCoeffs 정의
+                    distCoeffs = np.array([-4.4977607383629226e-01, -3.0529616557684319e-01,
+                                        -3.9021603448837856e-03, -2.8130335366792153e-03,
+                                        1.2224960045867554e+00])
+                    image = cv2.undistort(image, cameraMatrix, distCoeffs) #, None, new_img_size)
+
+                    total_times = []
+                    full_image, net_image, pad = get_image_tensor(image, input_size[0])
+                    pred = model.forward(net_image)
+                    tinference, tnms = model.get_last_inference_time()
+                    total_times=np.append(total_times,tinference + tnms)
+                    total_times = np.array(total_times)
+                    fps = 1.0/total_times.mean()
+                    # kudos_vision.py publish
+                    # Publish
+                    # model.process_predictions(pred[0], full_image, pad)
+
+                    _,predimage, bb=model.process_predictions(pred[0], full_image, pad)
+                    # print("bounding box : ", bb)
+
+                    if len(bb) > 1:
+                        x1, y1, x2, y2 = map(int, bb[:4])
+                        roi = image[y1:y2, x1:x2]
+
+                        # Convert ROI to grayscale
+                        gray_roi = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+
+                        # Create a binary mask for white ball
+                        _, mask = cv2.threshold(gray_roi, 200, 255, cv2.THRESH_BINARY)
+
+                        # Perform bitwise AND operation between the mask and ROI
+                        masked_roi = cv2.bitwise_and(roi, roi, mask=mask)
+
+                        # Detect circles using HoughCircles on the ROI
+                        circles = cv2.HoughCircles(
+                            gray_roi,
+                            cv2.HOUGH_GRADIENT,
+                            dp=1,  # Inverse ratio of the accumulator resolution to the image resolution
+                            minDist=20,  # Minimum distance between the centers of the detected circles
+                            param1=50,  # Upper threshold for the internal Canny edge detector
+                            param2=30,  # Threshold for center detection
+                            minRadius=5,  # Minimum radius of the detected circles
+                            maxRadius=100  # Maximum radius of the detected circles
+                        )
+                        
+                        # Draw the largest two detected circles on the ROI
+                        if circles is not None:
+                            circles = np.uint16(np.around(circles))
+                            detected_circles_queue.extend(circles[0])
+
+                        if len(detected_circles_queue) >= 5:
+                            # Select circles with a minimum radius (e.g., 5 pixels) as "large" circles
+                            large_circles = [circle for circle in detected_circles_queue if circle[2] >= 5]
+
+                            if len(large_circles) >= 5:
+                                # Select the largest 5 circles among the large circles
+                                largest_circles = sorted(large_circles, key=lambda x: x[2], reverse=True)[:5]
+
+                                # Calculate the average circle position and radius
+                                avg_x = sum(circle[0] for circle in largest_circles) / len(largest_circles)
+                                avg_y = sum(circle[1] for circle in largest_circles) / len(largest_circles)
+                                avg_radius = sum(circle[2] for circle in largest_circles) / len(largest_circles)
+
+                                # Draw the averaged circle on the original image
+                                avg_center = (int(avg_x), int(avg_y))
+                                avg_radius = int(avg_radius)
+
+                                # Draw the circle center
+                                cv2.circle(roi, avg_center, 1, (0, 100, 100), 3)
+                                # Draw the circle outline
+                                cv2.circle(roi, avg_center, avg_radius, (0, 255, 0), 3)
+
+                                # Calculate distance using the average radius
+                                distance = avg_radius # constant / avg_radius
+
+                                # Process new distance data
+                                data_processor.process_new_data(distance)
+
+                                # Get EMA distance
+                                ema_distance = data_processor.get_ema_distance()
+                                priROS.distance_talker(ema_distance)
+
+                        # Replace the processed ROI back into the full_image
+                        full_image[y1:y2, x1:x2] = roi
+
+                    # Additional code to handle the end of the program, release the camera, and log the final inference time
+                    priROS.yolo_result_img_talker(predimage, fps)
+                    tinference, tnms = model.get_last_inference_time()
+                    logger.info("Frame done in {}".format(tinference+tnms))
+                                    
+ 
+            except KeyboardInterrupt:
+                cam.release()
                 break
-            else:
-                
-                # cameraMatrix 정의
-                cameraMatrix = np.array([[9.4088597780774421e+02, 0., 3.7770158111216648e+02],
-                                        [0., 9.4925081349933703e+02, 3.2918621409818121e+02],
-                                        [0., 0., 1.]])
+            except Exception as e:
+                print(e)
+                pass
 
-                # distCoeffs 정의
-                distCoeffs = np.array([-4.4977607383629226e-01, -3.0529616557684319e-01,
-                                    -3.9021603448837856e-03, -2.8130335366792153e-03,
-                                    1.2224960045867554e+00])
-                image = cv2.undistort(image, cameraMatrix, distCoeffs) #, None, new_img_size)
-
-                total_times = []
-                full_image, net_image, pad = get_image_tensor(image, input_size[0])
-                pred = model.forward(net_image)
-                tinference, tnms = model.get_last_inference_time()
-                total_times=np.append(total_times,tinference + tnms)
-                total_times = np.array(total_times)
-                fps = 1.0/total_times.mean()
-                # kudos_vision.py publish
-                # Publish
-                # model.process_predictions(pred[0], full_image, pad)
-
-                _,predimage, bb=model.process_predictions(pred[0], full_image, pad)
-                # print("bounding box : ", bb)
-
-                if len(bb) > 1:
-                    x1, y1, x2, y2 = map(int, bb[:4])
-                    roi = image[y1:y2, x1:x2]
-
-                    # Convert ROI to grayscale
-                    gray_roi = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
-
-                    # Create a binary mask for white ball
-                    _, mask = cv2.threshold(gray_roi, 200, 255, cv2.THRESH_BINARY)
-
-                    # Perform bitwise AND operation between the mask and ROI
-                    masked_roi = cv2.bitwise_and(roi, roi, mask=mask)
-
-                    # Detect circles using HoughCircles on the ROI
-                    circles = cv2.HoughCircles(
-                        gray_roi,
-                        cv2.HOUGH_GRADIENT,
-                        dp=1,  # Inverse ratio of the accumulator resolution to the image resolution
-                        minDist=20,  # Minimum distance between the centers of the detected circles
-                        param1=50,  # Upper threshold for the internal Canny edge detector
-                        param2=30,  # Threshold for center detection
-                        minRadius=5,  # Minimum radius of the detected circles
-                        maxRadius=100  # Maximum radius of the detected circles
-                    )
-
-                    # Draw the largest two detected circles on the ROI
-                    if circles is not None:
-                        circles = np.uint16(np.around(circles))
-                        largest_circle = max(circles[0, :], key=lambda x: x[2])  # Select the largest circle by radius
-
-                        center = (largest_circle[0], largest_circle[1])
-                        radius = largest_circle[2]
-
-                        # Draw the circle center
-                        cv2.circle(roi, center, 1, (0, 100, 100), 3)
-                        # Draw the circle outline
-                        cv2.circle(roi, center, radius, (255, 0, 255), 3)
-
-                        # 거리 계산
-                        distance = radius #constant / radius
-
-                        # Process new distance data
-                        data_processor.process_new_data(distance)
-
-                        # Get EMA distance
-                        ema_distance = data_processor.get_ema_distance()
-                        dist_save = np.append(dist_save, ema_distance)
-
-                        priROS.distance_talker(ema_distance)
-                        try:
-                            print("raidus : ", distance)
-                            print("EMA Distance : ", ema_distance)
-                            print("dist mean : ", np.mean(dist_save))
-                        except:
-                            pass
-                    # Replace the processed ROI back into the full_image
-                    full_image[y1:y2, x1:x2] = roi
-
-                # Additional code to handle the end of the program, release the camera, and log the final inference time
-                priROS.yolo_result_img_talker(predimage, fps)
-                tinference, tnms = model.get_last_inference_time()
-                logger.info("Frame done in {}".format(tinference+tnms))
-                
-          except KeyboardInterrupt:
-            cam.release()
-            break
-
-        cam.release()
+cam.release()
