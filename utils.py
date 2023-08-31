@@ -4,7 +4,7 @@ import argparse
 import logging
 import time
 from pathlib import Path
-
+import math
 import numpy as np
 import cv2
 
@@ -25,6 +25,7 @@ class Colors:
     def hex2rgb(h):  # rgb order (PIL)
         return tuple(int(h[1 + i:1 + i + 2], 16) for i in (0, 2, 4))
 
+# TODO: 클래스로 만들기
 def plot_one_box(box, im, color=(128, 128, 128), txt_color=(255, 255, 255), label=None, line_width=3):
 
     # Plots one xyxy box on image im with label
@@ -118,16 +119,28 @@ def save_one_json(predn, jdict, path, class_map):
 def exponential_moving_average(current_value, previous_ema):
     # Initialize variables for EMA
     alpha = 0.2
-    if previous_ema is None:
-        return current_value
+    if previous_ema is not None:
+        if math.isnan(previous_ema):
+            previous_ema = current_value
+        else:
+            previous_ema = (1 - alpha) * previous_ema + alpha * current_value
+
     else:
-        return (1 - alpha) * np.mean(previous_ema) + alpha * np.mean(current_value)
+        previous_ema = current_value
+
+    return previous_ema
+
 
 # Additional code for removing outliers using Z-score
 def remove_outliers(data, z_threshold=1):
     try:
         mean = np.mean(data)
         std = np.std(data)
+        
+        # 표준 편차가 0이면 원본 데이터 반환
+        if std == 0:
+            return data
+        
         z_scores = np.abs((data - mean) / std)
         
         # Z-score가 임계값보다 작은 데이터만 유지하여 이상치 제거
@@ -136,6 +149,7 @@ def remove_outliers(data, z_threshold=1):
         return filtered_data
     except Exception as e:
         print(e)
+
 
 class StreamingDataProcessor:
     def __init__(self, window_size, alpha, z_threshold):
@@ -151,14 +165,17 @@ class StreamingDataProcessor:
             if len(self.data_buffer) >= self.window_size:
                 # Remove outliers using Z-score
                 data_no_outliers = remove_outliers(np.array(self.data_buffer), self.z_threshold)
-                
-                # EMA calculation for distance (using data without outliers)
-                self.ema_distance = exponential_moving_average(data_no_outliers, self.ema_distance)
-                
+
+                # Select the most recent value for EMA calculation
+                current_value = data_no_outliers[-1]
+
+                # EMA calculation for distance (using the most recent value)
+                self.ema_distance = exponential_moving_average(current_value, self.ema_distance)
+
                 # Remove oldest data to maintain window size
                 self.data_buffer.pop(0)
         except Exception as e:
-            print(e)
+            print("process_new_data :", e)
 
     def get_ema_distance(self):
         return self.ema_distance
