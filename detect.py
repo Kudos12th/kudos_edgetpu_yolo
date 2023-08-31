@@ -13,6 +13,7 @@ import cv2
 import yaml
 import timeit
 from collections import deque
+import matplotlib.pyplot as plt
 
 from sensor_msgs.msg import CompressedImage
 from std_msgs.msg import Float64
@@ -24,6 +25,7 @@ from edgetpumodel_change import EdgeTPUModel
 from utils import resize_and_pad, get_image_tensor, save_one_json, coco80_to_coco91_class, StreamingDataProcessor
 
 dist_save = np.array([])
+ema_distance_list = []
 max_circle_queue_size = 20 
 detected_circles_queue = deque(maxlen=max_circle_queue_size)
 
@@ -159,11 +161,15 @@ if __name__ == "__main__":
     elif args.image is not None:
         logger.info("Testing on user image: {}".format(args.image))
         model.predict(args.image)
+    
+    # TODO: 여기 코드 리팩터링 좀 하자
 
     elif args.stream:
         logger.info("Opening stream on device: {}".format(args.device))
         total_times = []
         constant = 40800
+        count = 0
+
         
         cam = cv2.VideoCapture(args.device)
         
@@ -176,7 +182,8 @@ if __name__ == "__main__":
         # Create a StreamingDataProcessor instance
         data_processor = StreamingDataProcessor(window_size=10, alpha=0.2, z_threshold=1)
 
-        while True:  # Run the loop for 20 seconds
+        while count < 100:
+
             try:
                 res, image = cam.read()
                 height, width = image.shape[:2]
@@ -273,6 +280,11 @@ if __name__ == "__main__":
                                 ema_distance = data_processor.get_ema_distance()
                                 priROS.distance_talker(ema_distance)
 
+                                print(ema_distance)
+                                ema_distance_list.append(ema_distance)
+                                count += 1
+
+
                         # Replace the processed ROI back into the full_image
                         full_image[y1:y2, x1:x2] = roi
 
@@ -281,12 +293,25 @@ if __name__ == "__main__":
                     tinference, tnms = model.get_last_inference_time()
                     logger.info("Frame done in {}".format(tinference+tnms))
                                     
- 
             except KeyboardInterrupt:
                 cam.release()
-                break
+                pass
             except Exception as e:
                 print(e)
                 pass
 
-cam.release()
+        # 그래프 생성 및 저장
+        plt.figure(figsize=(10, 6))
+        plt.plot(ema_distance_list, label='EMA Distance')
+        plt.xlabel('Frame')
+        plt.ylabel('EMA Distance')
+        plt.title('EMA Distance Over Frames')
+        plt.legend()
+
+        # 그래프 이미지 파일로 저장
+        plt.savefig('ema_distance_graph-120.png')
+
+        # 그래프 표시 (필요하다면)
+        plt.show()
+
+        cam.release()
