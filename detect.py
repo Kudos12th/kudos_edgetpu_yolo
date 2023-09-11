@@ -95,76 +95,7 @@ if __name__ == "__main__":
     desired_width = 640
     desired_height = 480
 
-    if args.bench_speed:
-        logger.info("Performing test run")
-        n_runs = 100
-        
-        
-        inference_times = []
-        nms_times = []
-        total_times = []
-        
-        for i in tqdm(range(n_runs)):
-            x = (255*np.random.random((3,*input_size))).astype(np.float32)
-            
-            pred = model.forward(x)
-            tinference, tnms = model.get_last_inference_time()
-            
-            inference_times.append(tinference)
-            nms_times.append(tnms)
-            total_times.append(tinference + tnms)
-            
-        inference_times = np.array(inference_times)
-        nms_times = np.array(nms_times)
-        total_times = np.array(total_times)
-            
-        logger.info("Inference time (EdgeTPU): {:1.2f} +- {:1.2f} ms".format(inference_times.mean()/1e-3, inference_times.std()/1e-3))
-        logger.info("NMS time (CPU): {:1.2f} +- {:1.2f} ms".format(nms_times.mean()/1e-3, nms_times.std()/1e-3))
-        fps = 1.0/total_times.mean()
-        logger.info("Mean FPS: {:1.2f}".format(fps))
-
-    elif args.bench_image:
-        logger.info("Testing on Zidane image")
-        model.predict("./data/images/0483.jpg")
-
-    elif args.bench_coco:
-        logger.info("Testing on COCO dataset")
-        
-        model.conf_thresh = 0.001
-        model.iou_thresh = 0.65
-        
-        coco_glob = os.path.join(args.coco_path, "*.jpg")
-        images = glob.glob(coco_glob)
-        
-        logger.info("Looking for: {}".format(coco_glob))
-        ids = [int(os.path.basename(i).split('.')[0]) for i in images]
-        
-        out_path = "./coco_eval"
-        os.makedirs("./coco_eval", exist_ok=True)
-        
-        logger.info("Found {} images".format(len(images)))
-        
-        class_map = coco80_to_coco91_class()
-        
-        predictions = []
-        
-        for image in tqdm(images):
-            res = model.predict(image, save_img=False, save_txt=False)
-            save_one_json(res, predictions, Path(image), class_map)
-            
-        pred_json = os.path.join(out_path,
-                    "{}_predictions.json".format(os.path.basename(args.model)))
-        
-        with open(pred_json, 'w') as f:
-            json.dump(predictions, f,indent=1)
-        
-    elif args.image is not None:
-        logger.info("Testing on user image: {}".format(args.image))
-        model.predict(args.image)
-    
-    # TODO: 여기 코드 리팩터링 좀 하자
-
-    elif args.stream:
+    if args.stream:
         logger.info("Opening stream on device: {}".format(args.device))
         total_times = []
         constant = 40800
