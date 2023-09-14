@@ -66,7 +66,7 @@ if __name__ == "__main__":
     parser.add_argument("--coco_path", type=str, help="Path to COCO 2017 Val folder")
     parser.add_argument("--quiet","-q", action='store_true', help="Disable logging (except errors)")
     parser.add_argument('--data', type=str, default='data/coco.yaml', help='(optional) dataset.yaml path') 
-        
+
     args = parser.parse_args()
     priROS = priROS()
     if args.quiet:
