@@ -226,13 +226,13 @@ class EdgeTPUModel:
             y2 = min(out_h, y2)
             
             out.append((x1, y1, x2, y2))
-            print(x1)
         return np.array(out).astype(int)
 
     def process_predictions(self, det, output_image, pad, output_path="detection.jpg", save_img=True, save_txt=True, hide_labels=False, hide_conf=False):
         """
         Process predictions and optionally output an image with annotations
         """
+        xyxy = []
         if len(det):
             # Rescale boxes from img_size to im0 size
             # x1, y1, x2, y2=
@@ -244,11 +244,8 @@ class EdgeTPUModel:
             
             # Print results
             for c in np.unique(det[:, -1]):
-                print(np.unique(det[:, -1]),"test3")
                 n = (det[:, -1] == c).sum()  # detections per class
-                print(n,"test")
                 s += f"{n} {self.names[int(c)]}{'s' * (n > 1)}, "  # add to string
-                print(s,"test2")
             
             if s != "":
                 s = s.strip()
@@ -275,19 +272,15 @@ class EdgeTPUModel:
                     #msg.layout.dim[1].stride = 3
                     
                     if xyxy[0]<640 and xyxy[1]<480:
-                    	xyxy.append(conf)
-                    	msg.data=xyxy
-                    	if self.names[c]=="ball":
-                    	   xyxy.append(1)
-                    	   msg.data=xyxy
-                    	   pub.publish(msg)
+                        xyxy.append(conf)
+                        msg.data=xyxy
+                        if self.names[c]=="ball":
+                            xyxy.append(1)
+                            msg.data=xyxy
+                            pub.publish(msg)
           		         
-                    #msg=Float32()
-                    #msg.data=xyxy[0]
-                    #pub.publish(msg)
-                    #rate.sleep()
-                    print(xyxy)
-                    print(conf)
+                    # print("xyxy: ", xyxy)
+                    # print("conf: ", conf)
                     output[base] = {}
                     output[base]['box'] = xyxy
                     output[base]['conf'] = conf
@@ -301,7 +294,7 @@ class EdgeTPUModel:
             if save_img:
               cv2.imwrite(output_path, output_image)
             
-        return det,output_image
+        return det,output_image, xyxy
     
     #def bounding_box(self):
     #	output[]=self.get_scaled_coords(det[:,:4], output_image, pad)
