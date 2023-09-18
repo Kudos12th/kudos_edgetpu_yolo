@@ -25,6 +25,55 @@ class Colors:
     def hex2rgb(h):  # rgb order (PIL)
         return tuple(int(h[1 + i:1 + i + 2], 16) for i in (0, 2, 4))
 
+import numpy as np
+
+class ColorMap:
+    @staticmethod
+    def create_pascal_label_colormap():
+        """Creates a label colormap used in PASCAL VOC segmentation benchmark.
+
+        Returns:
+            A Colormap for visualizing segmentation results.
+        """
+        colormap = np.zeros((256, 3), dtype=int)
+        indices = np.arange(256, dtype=int)
+
+        for shift in reversed(range(8)):
+            for channel in range(3):
+                colormap[:, channel] |= ((indices >> channel) & 1) << shift
+                indices >>= 3
+
+        return colormap
+
+    @staticmethod
+    def label_to_color_image(label):
+        """Adds color defined by the dataset colormap to the label.
+
+        Args:
+            label: A 2D array with integer type, storing the segmentation label.
+
+        Returns:
+            result: A 2D array with floating type. The element of the array
+            is the color indexed by the corresponding element in the input label
+            to the PASCAL color map.
+
+        Raises:
+            ValueError: If label is not of rank 2 or its value is larger than color
+            map maximum entry.
+        """
+        if label.ndim != 2:
+            raise ValueError('Expect 2-D input label')
+
+        colormap = ColorMap.create_pascal_label_colormap()
+
+        if np.max(label) >= len(colormap):
+            raise ValueError('label value too large.')
+
+        return colormap[label]
+
+
+
+
 # TODO: 클래스로 만들기
 def plot_one_box(box, im, color=(128, 128, 128), txt_color=(255, 255, 255), label=None, line_width=3):
 
