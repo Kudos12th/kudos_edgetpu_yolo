@@ -18,7 +18,7 @@ from std_msgs.msg import Float64
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-from edgetpumodel_change import EdgeTPUModel
+from edgetpumodel import EdgeTPUModel
 from utils import resize_and_pad, get_image_tensor, save_one_json, coco80_to_coco91_class, StreamingDataProcessor
 
 class priROS:

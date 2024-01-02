@@ -19,7 +19,7 @@ from std_msgs.msg import Float32
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("EdgeTPUModel")
 #rospy.init_node('bounding_box_pub', anonymous = True)
-pub=rospy.Publisher('bounding_box_pub',Float32MultiArray,queue_size=1000)
+pub=rospy.Publisher('move_tracking_Angle_pub',Float32MultiArray,queue_size=1000)
 #pub=rospy.Publisher('bounding_box_pub',Float32,queue_size=1000)
 
 class EdgeTPUModel:
@@ -49,6 +49,11 @@ class EdgeTPUModel:
         self.filter_classes = filter_classes
         self.agnostic_nms = agnostic_nms
         self.max_det = 1000
+
+        self.m_Pan_err = 0
+        self.m_PanOffset = 0
+        self.m_Tilt_err = 0
+        self.m_TiltOffset = 0
         
         logger.info("Confidence threshold: {}".format(conf_thresh))
         logger.info("IOU threshold: {}".format(iou_thresh))
@@ -226,29 +231,77 @@ class EdgeTPUModel:
             y2 = min(out_h, y2)
             
             out.append((x1, y1, x2, y2))
-            print(x1)
         return np.array(out).astype(int)
+
+
+    def move_tracking(self, mx, my):
+        # 수직 시야각(VFOV) = 46도
+        # 수평 시야각(HFOV) = 86.5도
+
+        m_Pan_p_gain = 0
+        m_Pan_d_gain = 0
+        m_Tilt_p_gain = 0
+        m_Tilt_d_gain = 0
+        err_X = mx - 320
+        err_Y = my - 240
+
+        m_Pan_err_diff = err_X - self.m_Pan_err
+        self.m_Pan_err = err_X
+
+        Pan_pOffset = self.m_Pan_err * m_Pan_p_gain
+        Pan_pOffset *= Pan_pOffset
+        if self.m_Pan_err < 0:
+            Pan_pOffset = -Pan_pOffset
+
+        Pan_dOffset = m_Pan_err_diff * m_Pan_d_gain
+        Pan_dOffset *= Pan_dOffset
+        if m_Pan_err_diff < 0:
+            Pan_dOffset = -Pan_dOffset
+
+        self.m_PanOffset += (Pan_pOffset + Pan_dOffset)
+        m_PanAngle = self.m_PanOffset * (86.5 / 640)
+
+        m_Tilt_err_diff = err_Y - self.m_Tilt_err
+        self.m_Tilt_err = err_Y
+
+        Tilt_pOffset = self.m_Tilt_err * m_Tilt_p_gain
+        Tilt_pOffset *= Tilt_pOffset
+        if self.m_Tilt_err < 0:
+            Tilt_pOffset = -Tilt_pOffset
+
+        Tilt_dOffset = m_Tilt_err_diff * m_Tilt_d_gain
+        Tilt_dOffset *= Tilt_dOffset
+        if m_Tilt_err_diff < 0:
+            Tilt_dOffset = -Tilt_dOffset
+
+        self.m_TiltOffset += (Tilt_pOffset + Tilt_dOffset)
+        m_TiltAngle = self.m_TiltOffset * (46 / 480)
+
+        Angle = [0, 0]  
+        Angle[0], Angle[1] = m_PanAngle, m_TiltAngle  
+
+        return Angle
+        
+        
 
     def process_predictions(self, det, output_image, pad, output_path="detection.jpg", save_img=True, save_txt=True, hide_labels=False, hide_conf=False):
         """
         Process predictions and optionally output an image with annotations
         """
-        xyxy = (0,)
+        xyxy = []
         if len(det):
             # Rescale boxes from img_size to im0 size
             # x1, y1, x2, y2=
             det[:, :4] = self.get_scaled_coords(det[:,:4], output_image, pad)
+            output = {}
             base, ext = os.path.splitext(output_path)
             
             s = ""
             
             # Print results
             for c in np.unique(det[:, -1]):
-                print(np.unique(det[:, -1]),"test3")
                 n = (det[:, -1] == c).sum()  # detections per class
-                print(n,"test")
                 s += f"{n} {self.names[int(c)]}{'s' * (n > 1)}, "  # add to string
-                print(s,"test2")
             
             if s != "":
                 s = s.strip()
@@ -264,7 +317,9 @@ class EdgeTPUModel:
                     label = None if hide_labels else (self.names[c] if hide_conf else f'{self.names[c]} {conf:.2f}')
                     output_image = plot_one_box(xyxy, output_image, label=label, color=self.colors(c, True))
                 if save_txt:
+
                     msg=Float32MultiArray()
+
                     #msg.layout.dim.append(MultiArrayDimension())
                     #msg.layout.dim[0].label = "rows"
                     #msg.layout.dim[0].size = 1000
@@ -279,20 +334,27 @@ class EdgeTPUModel:
                         msg.data=xyxy
                         if self.names[c]=="ball":
                             xyxy.append(1)
-                            msg.data=xyxy
+                            
+                            # msg.data=xyxy
+                            # pub.publish(msg)
+                    
+                            # 0 : x1, 1: y1, 2 : x2, 3 : y2
+                            box_mx = (xyxy[0] + xyxy [2]) / 2
+                            box_my = (xyxy[1] + xyxy [3]) / 2
+                            
+                            angle = self.move_tracking(box_mx, box_my)
+                            msg.data = angle
                             pub.publish(msg)
-          		         
-                    #msg=Float32()
-                    #msg.data=xyxy[0]
-                    #pub.publish(msg)
-                    #rate.sleep()
-                    print("xyxy: ", xyxy)
-                    print("conf: ", conf)
+                    
+
+                    # print("xyxy: ", xyxy)
+                    # print("conf: ", conf)
                     output[base] = {}
                     output[base]['box'] = xyxy
                     output[base]['conf'] = conf
                     output[base]['cls'] = cls
                     output[base]['cls_name'] = self.names[c]
+                
                     
             if save_txt:
                 output_txt = base+"txt"

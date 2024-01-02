@@ -226,26 +226,29 @@ class EdgeTPUModel:
             y2 = min(out_h, y2)
             
             out.append((x1, y1, x2, y2))
+            print(x1)
         return np.array(out).astype(int)
 
     def process_predictions(self, det, output_image, pad, output_path="detection.jpg", save_img=True, save_txt=True, hide_labels=False, hide_conf=False):
         """
         Process predictions and optionally output an image with annotations
         """
-        xyxy = []
+        xyxy = (0,)
         if len(det):
             # Rescale boxes from img_size to im0 size
             # x1, y1, x2, y2=
             det[:, :4] = self.get_scaled_coords(det[:,:4], output_image, pad)
-            output = {}
             base, ext = os.path.splitext(output_path)
             
             s = ""
             
             # Print results
             for c in np.unique(det[:, -1]):
+                print(np.unique(det[:, -1]),"test3")
                 n = (det[:, -1] == c).sum()  # detections per class
+                print(n,"test")
                 s += f"{n} {self.names[int(c)]}{'s' * (n > 1)}, "  # add to string
+                print(s,"test2")
             
             if s != "":
                 s = s.strip()
@@ -279,8 +282,12 @@ class EdgeTPUModel:
                             msg.data=xyxy
                             pub.publish(msg)
           		         
-                    # print("xyxy: ", xyxy)
-                    # print("conf: ", conf)
+                    #msg=Float32()
+                    #msg.data=xyxy[0]
+                    #pub.publish(msg)
+                    #rate.sleep()
+                    print("xyxy: ", xyxy)
+                    print("conf: ", conf)
                     output[base] = {}
                     output[base]['box'] = xyxy
                     output[base]['conf'] = conf
