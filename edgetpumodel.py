@@ -238,10 +238,10 @@ class EdgeTPUModel:
         # 수직 시야각(VFOV) = 46도
         # 수평 시야각(HFOV) = 86.5도
 
-        m_Pan_p_gain = 0
-        m_Pan_d_gain = 0
-        m_Tilt_p_gain = 0
-        m_Tilt_d_gain = 0
+        m_Pan_p_gain = 1
+        m_Pan_d_gain = 1
+        m_Tilt_p_gain = 1
+        m_Tilt_d_gain = 1
         err_X = mx - 320
         err_Y = my - 240
 
@@ -249,32 +249,32 @@ class EdgeTPUModel:
         self.m_Pan_err = err_X
 
         Pan_pOffset = self.m_Pan_err * m_Pan_p_gain
-        Pan_pOffset *= Pan_pOffset
-        if self.m_Pan_err < 0:
-            Pan_pOffset = -Pan_pOffset
+        # Pan_pOffset *= Pan_pOffset
+        # if self.m_Pan_err < 0:
+        #     Pan_pOffset = -Pan_pOffset
 
         Pan_dOffset = m_Pan_err_diff * m_Pan_d_gain
-        Pan_dOffset *= Pan_dOffset
-        if m_Pan_err_diff < 0:
-            Pan_dOffset = -Pan_dOffset
+        # Pan_dOffset *= Pan_dOffset
+        # if m_Pan_err_diff < 0:
+        #     Pan_dOffset = -Pan_dOffset
 
-        self.m_PanOffset += (Pan_pOffset + Pan_dOffset)
+        self.m_PanOffset = (Pan_pOffset + Pan_dOffset)
         m_PanAngle = self.m_PanOffset * (86.5 / 640)
 
         m_Tilt_err_diff = err_Y - self.m_Tilt_err
         self.m_Tilt_err = err_Y
 
         Tilt_pOffset = self.m_Tilt_err * m_Tilt_p_gain
-        Tilt_pOffset *= Tilt_pOffset
-        if self.m_Tilt_err < 0:
-            Tilt_pOffset = -Tilt_pOffset
+        # Tilt_pOffset *= Tilt_pOffset
+        # if self.m_Tilt_err < 0:
+        #     Tilt_pOffset = -Tilt_pOffset
 
         Tilt_dOffset = m_Tilt_err_diff * m_Tilt_d_gain
-        Tilt_dOffset *= Tilt_dOffset
-        if m_Tilt_err_diff < 0:
-            Tilt_dOffset = -Tilt_dOffset
+        # Tilt_dOffset *= Tilt_dOffset
+        # if m_Tilt_err_diff < 0:
+        #     Tilt_dOffset = -Tilt_dOffset
 
-        self.m_TiltOffset += (Tilt_pOffset + Tilt_dOffset)
+        self.m_TiltOffset = (Tilt_pOffset + Tilt_dOffset)
         m_TiltAngle = self.m_TiltOffset * (46 / 480)
 
         Angle = [0, 0]  
