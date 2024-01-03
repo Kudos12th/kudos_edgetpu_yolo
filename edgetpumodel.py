@@ -13,13 +13,12 @@ import cv2
 import json
 
 from utils import plot_one_box, Colors, get_image_tensor
-from std_msgs.msg import Float32MultiArray,MultiArrayDimension
-from std_msgs.msg import Float32
+from geometry_msgs.msg import Twist
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("EdgeTPUModel")
 #rospy.init_node('bounding_box_pub', anonymous = True)
-pub=rospy.Publisher('move_tracking_Angle_pub',Float32MultiArray,queue_size=1000)
+pub = rospy.Publisher('move_tracking_Angle_pub', Twist, queue_size=1000)
 #pub=rospy.Publisher('bounding_box_pub',Float32,queue_size=1000)
 
 class EdgeTPUModel:
@@ -317,34 +316,23 @@ class EdgeTPUModel:
                     label = None if hide_labels else (self.names[c] if hide_conf else f'{self.names[c]} {conf:.2f}')
                     output_image = plot_one_box(xyxy, output_image, label=label, color=self.colors(c, True))
                 if save_txt:
-
-                    msg=Float32MultiArray()
-
-                    #msg.layout.dim.append(MultiArrayDimension())
-                    #msg.layout.dim[0].label = "rows"
-                    #msg.layout.dim[0].size = 1000
-                    #msg.layout.dim[0].stride = 2
-                    #msg.layout.dim.append(MultiArrayDimension())
-                    #msg.layout.dim[1].label = "cols"
-                    #msg.layout.dim[1].size = 4
-                    #msg.layout.dim[1].stride = 3
                     
                     if xyxy[0]<640 and xyxy[1]<480:
                         xyxy.append(conf)
-                        msg.data=xyxy
+
                         if self.names[c]=="ball":
                             xyxy.append(1)
                             
-                            # msg.data=xyxy
-                            # pub.publish(msg)
                     
                             # 0 : x1, 1: y1, 2 : x2, 3 : y2
                             box_mx = (xyxy[0] + xyxy [2]) / 2
                             box_my = (xyxy[1] + xyxy [3]) / 2
                             
                             angle = self.move_tracking(box_mx, box_my)
-                            msg.data = angle
-                            pub.publish(msg)
+                            twist = Twist()
+                            twist.angular.y = angle[0]
+                            twist.angular.z = angle[1]
+                            pub.publish(twist)
                     
 
                     # print("xyxy: ", xyxy)
