@@ -3,6 +3,7 @@ import os
 import sys
 import logging
 import rospy
+import math
 
 import yaml
 import numpy as np
@@ -323,20 +324,19 @@ class EdgeTPUModel:
                         if self.names[c]=="ball":
                             xyxy.append(1)
                             
-                    
                             # 0 : x1, 1: y1, 2 : x2, 3 : y2
                             box_mx = (xyxy[0] + xyxy [2]) / 2
                             box_my = (xyxy[1] + xyxy [3]) / 2
                             
                             angle = self.move_tracking(box_mx, box_my)
+                            distance = 100 * math.tan(angle[1])
+
                             twist = Twist()
                             twist.angular.y = angle[0]
                             twist.angular.z = angle[1]
+                            twist.linear.x = distance
                             pub.publish(twist)
                     
-
-                    # print("xyxy: ", xyxy)
-                    # print("conf: ", conf)
                     output[base] = {}
                     output[base]['box'] = xyxy
                     output[base]['conf'] = conf
