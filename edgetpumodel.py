@@ -7,11 +7,11 @@ import math
 
 import yaml
 import numpy as np
-import pycoral.utils.edgetpu as etpu
 from pycoral.adapters import common
 from nms import non_max_suppression
 import cv2
 import json
+import tensorflow as tf
 
 from utils import plot_one_box, Colors, get_image_tensor
 from geometry_msgs.msg import Twist
@@ -89,7 +89,7 @@ class EdgeTPUModel:
         the interpreter that deals with the EdgetPU hardware.
         """
         # Load the model and allocate
-        self.interpreter = etpu.make_interpreter(self.model_file)
+        self.interpreter = tf.contrib.lite.Interpreter(self.model_file)
         self.interpreter.allocate_tensors()
     
         self.input_details = self.interpreter.get_input_details()
@@ -117,18 +117,19 @@ class EdgeTPUModel:
         logger.debug("Output zero: {}".format(self.output_zero))
         
         logger.info("Successfully loaded {}".format(self.model_file))
+        
+        def get_image_size(self):
+            """
+            Returns the expected size of the input image tensor
+            """
+            if self.interpreter is not None:
+                input_shape = self.input_details[0]['shape'][1:3]  # Assuming NHWC format
+                self.input_size = (input_shape[0], input_shape[1])
+                logger.debug("Expecting input shape: {}".format(self.input_size))
+                return self.input_size
+            else:
+                logger.warn("Interpreter is not yet loaded")
     
-    def get_image_size(self):
-        """
-        Returns the expected size of the input image tensor
-        """
-        if self.interpreter is not None:
-            self.input_size = common.input_size(self.interpreter)
-            logger.debug("Expecting input shape: {}".format(self.input_size))
-            return self.input_size
-        else:
-            logger.warn("Interpreter is not yet loaded")
-            
     
     def predict(self, image_path, save_img=True, save_txt=True):
         logger.info("Attempting to load {}".format(image_path))
@@ -172,7 +173,7 @@ class EdgeTPUModel:
         self.interpreter.invoke()
         
         # Scale output
-        result = (common.output_tensor(self.interpreter, 0).astype('float32') - self.output_zero) * self.output_scale
+        result = (self.interpreter.get_tensor(self.output_details[0]['index']).astype('float32') - self.output_zero) * self.output_scale
         self.inference_time = time.time() - tstart
         
         if with_nms:
