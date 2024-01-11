@@ -16,6 +16,8 @@ import json
 from utils import plot_one_box, Colors, get_image_tensor
 from geometry_msgs.msg import Twist
 
+no_ball_cnt = 0
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("EdgeTPUModel")
 #rospy.init_node('bounding_box_pub', anonymous = True)
@@ -243,7 +245,8 @@ class EdgeTPUModel:
         m_Tilt_p_gain = 1
         m_Tilt_d_gain = 1
         err_X = mx - 320
-        err_Y = my - 240
+        err_Y = 240 - my
+        # err_Y = my - 240
 
         m_Pan_err_diff = err_X - self.m_Pan_err
         self.m_Pan_err = err_X
@@ -281,13 +284,16 @@ class EdgeTPUModel:
         Angle[0], Angle[1] = m_PanAngle, m_TiltAngle  
 
         return Angle
-        
+    
+
+
         
 
     def process_predictions(self, det, output_image, pad, output_path="detection.jpg", save_img=True, save_txt=True, hide_labels=False, hide_conf=False):
         """
         Process predictions and optionally output an image with annotations
         """
+        global no_ball_cnt
         xyxy = []
         if len(det):
             # Rescale boxes from img_size to im0 size
@@ -308,7 +314,6 @@ class EdgeTPUModel:
                 s = s[:-1]
             
             logger.info("Detected: {}".format(s))
-            
             # Write results
             for *xyxy, conf, cls in reversed(det):
                 if save_img:  # Add bbox to image
@@ -322,35 +327,59 @@ class EdgeTPUModel:
                         xyxy.append(conf)
 
                         if self.names[c]=="ball":
+                            no_ball_cnt = 0
+
                             xyxy.append(1)
                             
                             # 0 : x1, 1: y1, 2 : x2, 3 : y2
+                            print('(x1,y1)=({},{})'.format(xyxy[0],xyxy[1]))
+                            print('(x2,y2)=({},{})'.format(xyxy[2],xyxy[3]))
+
                             box_mx = (xyxy[0] + xyxy [2]) / 2
                             box_my = (xyxy[1] + xyxy [3]) / 2
                             
+
                             angle = self.move_tracking(box_mx, box_my)
-                            distance = 100 * math.tan(angle[1])
+                            distance = 55 * math.tan(angle[1]) #robot height
+
 
                             twist = Twist()
+                            twist.angular.x = 1
+                            print("Yes Ball")
+
                             twist.angular.y = angle[0]
                             twist.angular.z = angle[1]
                             twist.linear.x = distance
                             pub.publish(twist)
+                            
                     
                     output[base] = {}
                     output[base]['box'] = xyxy
                     output[base]['conf'] = conf
                     output[base]['cls'] = cls
                     output[base]['cls_name'] = self.names[c]
-                
-                    
+            
             if save_txt:
                 output_txt = base+"txt"
                 with open(output_txt, 'w') as f:
                    json.dump(output, f, indent=1)
             if save_img:
-              cv2.imwrite(output_path, output_image)
-            
+                cv2.imwrite(output_path, output_image)
+
+        else:
+            twist = Twist()
+            twist.angular.x = 0
+            no_ball_cnt += 1
+
+            if no_ball_cnt > 15 :
+                pub.publish(twist)
+                print("**No Ball**")
+
+
+        
+        cv2.imshow('Camera', output_image)
+        if cv2.waitKey(1) & 0xFF == 27 :
+            cv2.destroyAllWindows()
         return det,output_image, xyxy
     
     #def bounding_box(self):
