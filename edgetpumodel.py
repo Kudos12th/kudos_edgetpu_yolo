@@ -56,7 +56,12 @@ class EdgeTPUModel:
         self.m_PanOffset = 0
         self.m_Tilt_err = 0
         self.m_TiltOffset = 0
-        
+
+        self.m_LeftLimit = 70
+        self.m_RightLimit = -70
+        self.m_TopLimit = 0
+        self.m_BottomLimit = 90
+            
         logger.info("Confidence threshold: {}".format(conf_thresh))
         logger.info("IOU threshold: {}".format(iou_thresh))
         
@@ -236,54 +241,62 @@ class EdgeTPUModel:
         return np.array(out).astype(int)
 
 
-    def move_tracking(self, mx, my):
+    def move_tracking(self, err_X, err_Y):
         # 수직 시야각(VFOV) = 46도
         # 수평 시야각(HFOV) = 86.5도
 
-        m_Pan_p_gain = 1
-        m_Pan_d_gain = 1
-        m_Tilt_p_gain = 1
-        m_Tilt_d_gain = 1
-        err_X = mx - 320
-        err_Y = 240 - my
-        # err_Y = my - 240
+        m_Pan_p_gain = 0.1
+        m_Pan_d_gain = 0.22
+        m_Tilt_p_gain = 0.1
+        m_Tilt_d_gain = 0.22
 
         m_Pan_err_diff = err_X - self.m_Pan_err
         self.m_Pan_err = err_X
 
         Pan_pOffset = self.m_Pan_err * m_Pan_p_gain
-        # Pan_pOffset *= Pan_pOffset
-        # if self.m_Pan_err < 0:
-        #     Pan_pOffset = -Pan_pOffset
+        Pan_pOffset *= Pan_pOffset
+        if self.m_Pan_err < 0:
+            Pan_pOffset = -Pan_pOffset
 
         Pan_dOffset = m_Pan_err_diff * m_Pan_d_gain
-        # Pan_dOffset *= Pan_dOffset
-        # if m_Pan_err_diff < 0:
-        #     Pan_dOffset = -Pan_dOffset
+        Pan_dOffset *= Pan_dOffset
+        if m_Pan_err_diff < 0:
+            Pan_dOffset = -Pan_dOffset
 
-        self.m_PanOffset = (Pan_pOffset + Pan_dOffset)
+        self.m_PanOffset += (Pan_pOffset + Pan_dOffset)
         m_PanAngle = self.m_PanOffset * (86.5 / 640)
+        if m_PanAngle > self.m_LeftLimit:
+            m_PanAngle = self.m_LeftLimit
+        elif m_PanAngle < self.m_RightLimit:
+            m_PanAngle = self.m_RightLimit
 
         m_Tilt_err_diff = err_Y - self.m_Tilt_err
         self.m_Tilt_err = err_Y
 
         Tilt_pOffset = self.m_Tilt_err * m_Tilt_p_gain
-        # Tilt_pOffset *= Tilt_pOffset
-        # if self.m_Tilt_err < 0:
-        #     Tilt_pOffset = -Tilt_pOffset
+        Tilt_pOffset *= Tilt_pOffset
+        if self.m_Tilt_err < 0:
+            Tilt_pOffset = -Tilt_pOffset
 
         Tilt_dOffset = m_Tilt_err_diff * m_Tilt_d_gain
-        # Tilt_dOffset *= Tilt_dOffset
-        # if m_Tilt_err_diff < 0:
-        #     Tilt_dOffset = -Tilt_dOffset
+        Tilt_dOffset *= Tilt_dOffset
+        if m_Tilt_err_diff < 0:
+            Tilt_dOffset = -Tilt_dOffset
 
-        self.m_TiltOffset = (Tilt_pOffset + Tilt_dOffset)
+        self.m_TiltOffset += (Tilt_pOffset + Tilt_dOffset)
         m_TiltAngle = self.m_TiltOffset * (46 / 480)
+        if m_TiltAngle > self.m_BottomLimit:
+            m_TiltAngle = self.m_BottomLimit
+        elif m_TiltAngle < self.m_TopLimit:
+            m_TiltAngle = self.m_TopLimit
 
         Angle = [0, 0]  
         Angle[0], Angle[1] = m_PanAngle, m_TiltAngle  
 
+
         return Angle
+    
+
     
         
 
@@ -311,10 +324,12 @@ class EdgeTPUModel:
             box_mx = (best_det[0] + best_det[2]) / 2
             box_my = (best_det[1] + best_det[3]) / 2
 
+            err_x = box_mx - 320
+            err_y = box_my - 240
+            # err_Y = my - 240
 
-            angle = self.move_tracking(box_mx, box_my)
-            distance = 55 * math.tan(angle[1]) #robot height
-
+            angle = self.move_tracking(err_x, err_y)
+            distance = 55 * math.atan(angle[1]) #robot height
 
             twist = Twist()
             twist.angular.x = 1
@@ -322,10 +337,11 @@ class EdgeTPUModel:
 
             twist.angular.y = angle[0]
             twist.angular.z = angle[1]
+            
             twist.linear.x = distance
+            
             pub.publish(twist)
                             
-            
             s = ""
             
             # Print results
@@ -378,6 +394,7 @@ class EdgeTPUModel:
                 print("**No Ball**")
         
         cv2.imshow('Camera', output_image)
+        cv2.waitKey(1)
         # if cv2.waitKey(1) & 0xFF == 27 :
         #     cv2.destroyAllWindows()
 
