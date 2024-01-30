@@ -245,9 +245,9 @@ class EdgeTPUModel:
         # 수직 시야각(VFOV) = 46도
         # 수평 시야각(HFOV) = 86.5도
 
-        m_Pan_p_gain = 0.1
+        m_Pan_p_gain = 0.05
         m_Pan_d_gain = 0.22
-        m_Tilt_p_gain = 0.1
+        m_Tilt_p_gain = 0.05
         m_Tilt_d_gain = 0.22
 
         m_Pan_err_diff = err_X - self.m_Pan_err
@@ -326,7 +326,6 @@ class EdgeTPUModel:
 
             err_x = box_mx - 320
             err_y = box_my - 240
-            # err_Y = my - 240
 
             angle = self.move_tracking(err_x, err_y)
             distance = 55 * math.atan(angle[1]) #robot height
