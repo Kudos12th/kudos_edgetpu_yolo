@@ -15,7 +15,7 @@ test: test-dev2017.txt  # 20288 of 40670 images, submit to https://competitions.
 
 # Classes
 nc: 3  # number of classes
-names: ['ball','goal','keeper']  # class names
+names: ['ball','goal','foot']  # class names
 
 
 # Download script/URL (optional)

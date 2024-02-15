@@ -1,69 +1,57 @@
 import cv2
+import os
+import time
 
-def gstreamer_pipeline(
-    capture_width=224,
-    capture_height=224,
-    display_width=224, #1280,
-    display_height=224, #720,
-    framerate=60,
-    flip_method=0,
-):
-    return (
-        "nvarguscamerasrc ! "
-        "video/x-raw(memory:NVMM), "
-        "width=(int)%d, height=(int)%d, "
-        "format=(string)NV12, framerate=(fraction)%d/1 ! "
-        "nvvidconv flip-method=%d ! "
-        "video/x-raw, width=(int)%d, height=(int)%d, format=(string)BGRx ! "
-        "videoconvert ! "
-        "video/x-raw, format=(string)BGR ! appsink"
-        % (
-            capture_width,
-            capture_height,
-            framerate,
-            flip_method,
-            display_width,
-            display_height,
-        )
-    )
+def capture_and_save_images(camera_index, save_directory, images_per_second, total_images):
+    # Open the camera
+    cap = cv2.VideoCapture(camera_index)
 
-def show_camera():
-    # To flip the image, modify the flip_method parameter (0 and 2 are the most common)
-    img_count = 0 
+    # Check if the camera opened successfully
+    if not cap.isOpened():
+        print("Error: Could not open camera.")
+        return
 
-    print(gstreamer_pipeline(flip_method=0))
-    cap = cv2.VideoCapture(0)
+    # Create the save directory if it doesn't exist
+    if not os.path.exists(save_directory):
+        os.makedirs(save_directory)
 
-    if cap.isOpened():
+    image_count = 0
+    start_time = time.time()
 
-        while True: 
-            ret_val, img = cap.read()
-           # img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    while image_count < total_images:
+        # Capture frame-by-frame
+        ret, frame = cap.read()
 
-            cv2.imshow("CSI Camera", img)
+        if not ret:
+            print("Error: Failed to capture frame.")
+            break
 
-            keyCode = cv2.waitKey(1000) & 0xFF
+        # Save the image
+        image_name = os.path.join(save_directory, f"{image_count}.jpg")
+        cv2.imwrite(image_name, frame)
 
-            # Stop the program on the ESC key
-            if keyCode == 27:
-                break
+        # Display image count
+        print(f"Saved image {image_count}")
 
-            #if keyCode == ord('s'):
-            	#img_count += 1
-            	#save_file_name = './img/' + format(img_count, '04') + '.jpg'
-            	#print(format(img_count, '04'))
-            	#cv2.imwrite(save_file_name, img)
+        # Increment image count
+        image_count += 1
 
-            img_count += 1
-            save_file_name = './img/' + format(img_count, '04') + '.jpg'
-            print(format(img_count, '04'))
-            cv2.imwrite(save_file_name, img)
+        # Wait for the next frame
+        time.sleep(1 / images_per_second)
 
-        cap.release()
-        cv2.destroyAllWindows()
-    else:
-        print("Unable to open camera")
+    # Release the camera and close the window
+    cap.release()
+    cv2.destroyAllWindows()
 
+    end_time = time.time()
+    elapsed_time = end_time - start_time
+    print(f"Captured {total_images} images in {elapsed_time:.2f} seconds.")
 
-if __name__ == "__main__":
-    show_camera()
+# 설정
+camera_index = 0  # 카메라 인덱스 (일반적으로 0 또는 1)
+save_directory = "./data"  # 이미지 저장 디렉토리
+images_per_second = 5  # 초당 저장할 이미지 수
+total_images = 3000  # 총 저장할 이미지 수
+
+# 이미지 캡처 및 저장 실행
+capture_and_save_images(camera_index, save_directory, images_per_second, total_images)
