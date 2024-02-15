@@ -18,7 +18,7 @@ from std_msgs.msg import Float64
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-from edgetpumodel import EdgeTPUModel
+from tensorflowmodel import TensorFlowModel
 from utils import resize_and_pad, get_image_tensor, save_one_json, coco80_to_coco91_class, StreamingDataProcessor
 
 class priROS:
@@ -68,7 +68,7 @@ if __name__ == "__main__":
         logger.error("Please select either an input image or a stream")
         exit(1)
     
-    model = EdgeTPUModel(args.model, args.names, conf_thresh=args.conf_thresh, iou_thresh=args.iou_thresh)
+    model = TensorFlowModel(args.model, args.names, conf_thresh=args.conf_thresh, iou_thresh=args.iou_thresh)
     input_size = model.get_image_size()
 
     x = (255*np.random.random((3,*input_size))).astype(np.uint8)
