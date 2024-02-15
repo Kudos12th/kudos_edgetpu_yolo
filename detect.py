@@ -46,11 +46,11 @@ if __name__ == "__main__":
     parser.add_argument("--model", "-m", help="weights file", required=True)
     parser.add_argument("--bench_speed", action='store_true', help="run speed test on dummy data")
     parser.add_argument("--bench_image", action='store_true', help="run detection test")
-    parser.add_argument("--conf_thresh", type=float, default=0.25, help="model confidence threshold")
+    parser.add_argument("--conf_thresh", type=float, default=0.8, help="model confidence threshold")
     parser.add_argument("--iou_thresh", type=float, default=0.45, help="NMS IOU threshold")
     parser.add_argument("--names", type=str, default='data/coco.yaml', help="Names file")
     parser.add_argument("--image", "-i", type=str, help="Image file to run detection on")
-    parser.add_argument("--device", type=int, default=2, help="Image capture device to run live detection")
+    parser.add_argument("--device", type=int, default=0, help="Image capture device to run live detection")
     # Device num : v4l2-ctl --list-devices
     parser.add_argument("--stream", action='store_true', help="Process a stream")
     parser.add_argument("--bench_coco", action='store_true', help="Process a stream")

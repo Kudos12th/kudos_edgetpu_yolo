@@ -245,9 +245,9 @@ class EdgeTPUModel:
         # 수직 시야각(VFOV) = 46도
         # 수평 시야각(HFOV) = 86.5도
 
-        m_Pan_p_gain = 0.1
+        m_Pan_p_gain = 0.05
         m_Pan_d_gain = 0.22
-        m_Tilt_p_gain = 0.1
+        m_Tilt_p_gain = 0.05
         m_Tilt_d_gain = 0.22
 
         m_Pan_err_diff = err_X - self.m_Pan_err
@@ -263,7 +263,7 @@ class EdgeTPUModel:
         if m_Pan_err_diff < 0:
             Pan_dOffset = -Pan_dOffset
 
-        self.m_PanOffset += (Pan_pOffset + Pan_dOffset)
+        self.m_PanOffset = (Pan_pOffset + Pan_dOffset)
         m_PanAngle = self.m_PanOffset * (86.5 / 640)
         if m_PanAngle > self.m_LeftLimit:
             m_PanAngle = self.m_LeftLimit
@@ -283,7 +283,7 @@ class EdgeTPUModel:
         if m_Tilt_err_diff < 0:
             Tilt_dOffset = -Tilt_dOffset
 
-        self.m_TiltOffset += (Tilt_pOffset + Tilt_dOffset)
+        self.m_TiltOffset = (Tilt_pOffset + Tilt_dOffset)
         m_TiltAngle = self.m_TiltOffset * (46 / 480)
         if m_TiltAngle > self.m_BottomLimit:
             m_TiltAngle = self.m_BottomLimit
@@ -296,9 +296,6 @@ class EdgeTPUModel:
 
         return Angle
     
-
-    
-        
 
     def process_predictions(self, det, output_image, pad, output_path="detection.jpg", save_img=True, save_txt=True, hide_labels=False, hide_conf=False):
         """
@@ -326,7 +323,6 @@ class EdgeTPUModel:
 
             err_x = box_mx - 320
             err_y = box_my - 240
-            # err_Y = my - 240
 
             angle = self.move_tracking(err_x, err_y)
             distance = 55 * math.atan(angle[1]) #robot height
@@ -368,7 +364,7 @@ class EdgeTPUModel:
 
                         if self.names[c]=="ball":
                             no_ball_cnt = 0
-
+                            
                             xyxy.append(1)        
                     
                     output[base] = {}
@@ -391,15 +387,8 @@ class EdgeTPUModel:
 
             if no_ball_cnt > 15 :
                 pub.publish(twist)
-                print("**No Ball**")
         
         cv2.imshow('Camera', output_image)
         cv2.waitKey(1)
-        # if cv2.waitKey(1) & 0xFF == 27 :
-        #     cv2.destroyAllWindows()
 
         return det,output_image, xyxy
-    
-    #def bounding_box(self):
-    #	output[]=self.get_scaled_coords(det[:,:4], output_image, pad)
-    #	return np.array(output)
