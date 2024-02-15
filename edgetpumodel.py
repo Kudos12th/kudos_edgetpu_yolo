@@ -19,7 +19,6 @@ from geometry_msgs.msg import Twist
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("EdgeTPUModel")
-# rospy.init_node('goal_position_pub', anonymous = True)
 angle_pub = rospy.Publisher('move_tracking_Angle_pub', Twist, queue_size=1000)
 goal_pub = rospy.Publisher('goal_position_pub',Twist,queue_size=1000)
 
@@ -49,7 +48,7 @@ class EdgeTPUModel:
         self.iou_thresh = iou_thresh
         self.filter_classes = filter_classes
         self.agnostic_nms = agnostic_nms
-        self.max_det = 1000
+        self.max_det = max_det
 
 
         self.no_ball_cnt = 0
@@ -376,7 +375,6 @@ class EdgeTPUModel:
             if save_img:
                 cv2.imwrite(output_path, output_image)
 
-        # else: #아무것도 감지 x 
         twist.angular.x = ball_flag
         twist.angular.y = angle[0]
         twist.angular.z = angle[1]
@@ -385,20 +383,3 @@ class EdgeTPUModel:
         cv2.waitKey(1)
 
         return det,output_image, xyxy
-
-
-
-'''
-4 -> 골대 1번 찾는 중 -> 찾았다
-5 -> error +- -> center맞앗어 -> twist(+-, 10)
-6 : center 맞음
-
-7 : 2번째 찾는 중 -> 찾
-8
-9 이전 골대랑 같음
-
-10 다른 골대다
-
-
-linear x 0 1
-'''
