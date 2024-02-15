@@ -58,6 +58,7 @@ cd kudos_edgetpu_yolo
     ```
 4. coral
 5. python3 detect.py --model best-int8_edgetpu.tflite --stream
+python3 detect.py --model 384sn_pretrained_2cfg_ds_saved_model --stream
 
 
 <br>
