@@ -24,8 +24,8 @@ no_ball_cnt = 0
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("TensorFlowModel")
-pub = rospy.Publisher('move_tracking_Angle_pub', Twist, queue_size=1000)
-
+angle_pub = rospy.Publisher('move_tracking_Angle_pub', Twist, queue_size=1000)
+goal_pub = rospy.Publisher('goal_position_pub',Twist,queue_size=1000)
 
 class TensorFlowModel:
     def __init__(self, model_path, names_file, conf_thresh=0.25, iou_thresh=0.45, filter_classes=None, agnostic_nms=False, max_det=1000):
@@ -48,6 +48,7 @@ class TensorFlowModel:
         self.agnostic_nms = agnostic_nms
         self.max_det = max_det
 
+        self.no_ball_cnt = 0
         self.m_Pan_err = 0
         self.m_PanOffset = 0
         self.m_Tilt_err = 0
@@ -138,9 +139,7 @@ class TensorFlowModel:
         
     
     def forward(self, x: np.ndarray, with_nms=True) -> np.ndarray:
-
         logger.info(f"Input tensor shape: {x.shape}")
-
         """
         Perform inference using the TensorFlow model.
 
@@ -222,15 +221,21 @@ class TensorFlowModel:
             
             out.append((x1, y1, x2, y2))
         return np.array(out).astype(int)
-
-
-    def move_tracking(self, err_X, err_Y):
+    
+    def move_tracking(self, det):
         # 수직 시야각(VFOV) = 46도
         # 수평 시야각(HFOV) = 86.5도
+        angle = [0,0]
+        best_ball_det = max(det, key=lambda x: x[4])
+        box_mx = (best_ball_det[0] + best_ball_det[2]) / 2
+        box_my = (best_ball_det[1] + best_ball_det[3]) / 2
 
-        m_Pan_p_gain = 0.1
+        err_X = box_mx - 320
+        err_Y = box_my - 240
+    
+        m_Pan_p_gain = 0.05
         m_Pan_d_gain = 0.22
-        m_Tilt_p_gain = 0.1
+        m_Tilt_p_gain = 0.05
         m_Tilt_d_gain = 0.22
 
         m_Pan_err_diff = err_X - self.m_Pan_err
@@ -246,7 +251,7 @@ class TensorFlowModel:
         if m_Pan_err_diff < 0:
             Pan_dOffset = -Pan_dOffset
 
-        self.m_PanOffset += (Pan_pOffset + Pan_dOffset)
+        self.m_PanOffset = (Pan_pOffset + Pan_dOffset)
         m_PanAngle = self.m_PanOffset * (86.5 / 640)
         if m_PanAngle > self.m_LeftLimit:
             m_PanAngle = self.m_LeftLimit
@@ -266,87 +271,97 @@ class TensorFlowModel:
         if m_Tilt_err_diff < 0:
             Tilt_dOffset = -Tilt_dOffset
 
-        self.m_TiltOffset += (Tilt_pOffset + Tilt_dOffset)
+        self.m_TiltOffset = (Tilt_pOffset + Tilt_dOffset)
         m_TiltAngle = self.m_TiltOffset * (46 / 480)
         if m_TiltAngle > self.m_BottomLimit:
             m_TiltAngle = self.m_BottomLimit
         elif m_TiltAngle < self.m_TopLimit:
             m_TiltAngle = self.m_TopLimit
 
-        Angle = [0, 0]  
-        Angle[0], Angle[1] = m_PanAngle, m_TiltAngle  
-
-
-        return Angle
+        angle[0], angle[1] = m_PanAngle, m_TiltAngle  
+        return angle
     
+    def goal_position_pub(self, det):
+        best_goal_det = max(det, key=lambda x: x[4])
+        best_goal_xy = [((best_goal_det[0] + best_goal_det[2]) / 2), ((best_goal_det[1] + best_goal_det[3]) / 2)]
+        twist = Twist()
+        twist.linear.x = best_goal_xy[0]
+        twist.linear.y = best_goal_xy[1]
+        goal_pub.publish(twist)
 
     def process_predictions(self, det, output_image, pad, output_path="detection.jpg", save_img=True, save_txt=True, hide_labels=False, hide_conf=False):
-        global no_ball_cnt
+        """
+        Process predictions and optionally output an image with annotations
+        """
         xyxy = []
+        angle = [0,0]
+        twist = Twist() 
+        ball_flag = 0
+        
         if len(det):
-            det[:, :4] = self.get_scaled_coords(det[:, :4], output_image, pad)
+
+            # Rescale boxes from img_size to im0 size
+            # x1, y1, x2, y2=
+            det[:, :4] = self.get_scaled_coords(det[:,:4], output_image, pad)
+            '''
+            det[:,:4] 양 옆 좌표  0:x1, 1:y1, 2:x2, 3:y2
+            det[:,4] conf
+            det[:,5] class 0:ball 1:goal 2:foot
+            '''
+
+            ball_det = [det[i,:] for i in range(len(det)) if det[i, 5] == 0]
+            goal_det = [det[i,:] for i in range(len(det)) if det[i, 5] == 1]
+            foot_det = [det[i,:] for i in range(len(det)) if det[i, 5] == 2]
+
             output = {}
             base, ext = os.path.splitext(output_path)
 
-            conf_scores = det[:, 4]
-            best_idx = np.argmax(conf_scores)
-            best_det = det[best_idx]
+            if len(ball_det):
+                angle = self.move_tracking(ball_det)
+                ball_distance = 55 * math.atan(angle[1]) #robot height
+                twist.linear.x = ball_distance
+                ball_flag = 1  # yes_ball
 
-            box_mx = (best_det[0] + best_det[2]) / 2
-            box_my = (best_det[1] + best_det[3]) / 2
-
-            err_x = box_mx - 320
-            err_y = box_my - 240
-
-            angle = self.move_tracking(err_x, err_y)
-            distance = 55 * math.atan(angle[1])
-
-            twist = Twist()
-            twist.angular.x = 1
-            twist.angular.y = angle[0]
-            twist.angular.z = angle[1]
-            twist.linear.x = distance
-            pub.publish(twist)
+            if len(goal_det):
+                self.goal_position_pub(goal_det)
 
             s = ""
             for c in np.unique(det[:, -1]):
-                n = (det[:, -1] == c).sum()
-                s += f"{n} {self.names[int(c)]}{'s' * (n > 1)}, "
+                n = (det[:, -1] == c).sum()  # detections per class
+                s += f"{n} {self.names[int(c)]}{'s' * (n > 1)}, "  # add to string
             if s != "":
                 s = s.strip()
                 s = s[:-1]
             logger.info("Detected: {}".format(s))
-
+            # Write results
             for *xyxy, conf, cls in reversed(det):
-                if save_img:
-                    c = int(cls)
+                if save_img:  # Add bbox to image
+                    prev_time = time.time()
+                    c = int(cls)  # integer class
                     label = None if hide_labels else (self.names[c] if hide_conf else f'{self.names[c]} {conf:.2f}')
                     output_image = plot_one_box(xyxy, output_image, label=label, color=self.colors(c, True))
                 if save_txt:
-                    if xyxy[0] < 640 and xyxy[1] < 480:
+                    if xyxy[0]<640 and xyxy[1]<480:
                         xyxy.append(conf)
-                        if self.names[c] == "ball":
-                            no_ball_cnt = 0
-                            xyxy.append(1)
+                        if self.names[c]=="ball":
+                            xyxy.append(1)        
                     output[base] = {}
                     output[base]['box'] = xyxy
                     output[base]['conf'] = conf
                     output[base]['cls'] = cls
                     output[base]['cls_name'] = self.names[c]
             if save_txt:
-                output_txt = base + ".txt"
+                output_txt = base+"txt"
                 with open(output_txt, 'w') as f:
-                    json.dump(output, f, indent=1)
+                   json.dump(output, f, indent=1)
             if save_img:
                 cv2.imwrite(output_path, output_image)
 
-        else:
-            twist = Twist()
-            twist.angular.x = 0
-            no_ball_cnt += 1
-            if no_ball_cnt > 15:
-                pub.publish(twist)
-
+        twist.angular.x = ball_flag
+        twist.angular.y = angle[0]
+        twist.angular.z = angle[1]
+        angle_pub.publish(twist)
         cv2.imshow('Camera', output_image)
         cv2.waitKey(1)
-        return det, output_image, xyxy
+
+        return det,output_image, xyxy
