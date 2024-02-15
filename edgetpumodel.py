@@ -241,10 +241,20 @@ class EdgeTPUModel:
         return np.array(out).astype(int)
 
 
-    def move_tracking(self, err_X, err_Y):
+    def move_tracking(self, det):
         # 수직 시야각(VFOV) = 46도
         # 수평 시야각(HFOV) = 86.5도
 
+        ball_conf_scores = [det[i, 4] for i in range(len(det)) if det[i, 5] == 0]
+        best_ball_idx = np.argmax(ball_conf_scores)
+        best_ball_det = det[best_ball_idx]
+
+        box_mx = (best_ball_det[0] + best_ball_det[2]) / 2
+        box_my = (best_ball_det[1] + best_ball_det[3]) / 2
+
+        err_X = box_mx - 320
+        err_Y = box_my - 240
+    
         m_Pan_p_gain = 0.05
         m_Pan_d_gain = 0.22
         m_Tilt_p_gain = 0.05
@@ -291,8 +301,8 @@ class EdgeTPUModel:
             m_TiltAngle = self.m_TopLimit
 
         Angle = [0, 0]  
-        Angle[0], Angle[1] = m_PanAngle, m_TiltAngle  
-
+        if len(ball_conf_scores):
+            Angle[0], Angle[1] = m_PanAngle, m_TiltAngle  
 
         return Angle
     
@@ -307,29 +317,20 @@ class EdgeTPUModel:
             # Rescale boxes from img_size to im0 size
             # x1, y1, x2, y2=
             det[:, :4] = self.get_scaled_coords(det[:,:4], output_image, pad)
+
             output = {}
+            '''
+            det[:,:4] 양 옆 좌표  0:x1, 1:y1, 2:x2, 3:y2
+            det[:,4] conf
+            det[:,5] class 0:ball 1:goal
+            '''
             base, ext = os.path.splitext(output_path)
 
-            conf_scores = det[:, 4]
-            best_idx = np.argmax(conf_scores)
-            best_det = det[best_idx]
-
-            # 0 : x1, 1: y1, 2 : x2, 3 : y2
-            # print('(x1,y1)=({},{})'.format(best_det[0],best_det[1]))
-            # print('(x2,y2)=({},{})'.format(best_det[2],best_det[3]))
-
-            box_mx = (best_det[0] + best_det[2]) / 2
-            box_my = (best_det[1] + best_det[3]) / 2
-
-            err_x = box_mx - 320
-            err_y = box_my - 240
-
-            angle = self.move_tracking(err_x, err_y)
+            angle = self.move_tracking(det)
             distance = 55 * math.atan(angle[1]) #robot height
 
             twist = Twist()
             twist.angular.x = 1
-            print("Yes Ball")
 
             twist.angular.y = angle[0]
             twist.angular.z = angle[1]
@@ -339,12 +340,11 @@ class EdgeTPUModel:
             pub.publish(twist)
                             
             s = ""
-            
-            # Print results
+
             for c in np.unique(det[:, -1]):
                 n = (det[:, -1] == c).sum()  # detections per class
                 s += f"{n} {self.names[int(c)]}{'s' * (n > 1)}, "  # add to string
-            
+
             if s != "":
                 s = s.strip()
                 s = s[:-1]
@@ -363,8 +363,6 @@ class EdgeTPUModel:
                         xyxy.append(conf)
 
                         if self.names[c]=="ball":
-                            no_ball_cnt = 0
-                            
                             xyxy.append(1)        
                     
                     output[base] = {}
@@ -373,6 +371,8 @@ class EdgeTPUModel:
                     output[base]['cls'] = cls
                     output[base]['cls_name'] = self.names[c]
             
+            print(output,'\n-----------------------')
+
             if save_txt:
                 output_txt = base+"txt"
                 with open(output_txt, 'w') as f:
