@@ -16,13 +16,11 @@ import json
 from utils import plot_one_box, Colors, get_image_tensor
 from geometry_msgs.msg import Twist
 
-no_ball_cnt = 0
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("EdgeTPUModel")
-#rospy.init_node('bounding_box_pub', anonymous = True)
-pub = rospy.Publisher('move_tracking_Angle_pub', Twist, queue_size=1000)
-#pub=rospy.Publisher('bounding_box_pub',Float32,queue_size=1000)
+angle_pub = rospy.Publisher('move_tracking_Angle_pub', Twist, queue_size=1000)
+goal_pub = rospy.Publisher('goal_position_pub',Twist,queue_size=1000)
 
 class EdgeTPUModel:
 
@@ -50,8 +48,10 @@ class EdgeTPUModel:
         self.iou_thresh = iou_thresh
         self.filter_classes = filter_classes
         self.agnostic_nms = agnostic_nms
-        self.max_det = 1000
+        self.max_det = max_det
 
+
+        self.no_ball_cnt = 0
         self.m_Pan_err = 0
         self.m_PanOffset = 0
         self.m_Tilt_err = 0
@@ -150,7 +150,6 @@ class EdgeTPUModel:
         
         return det
         
-        
     
     def forward(self, x:np.ndarray, with_nms=True) -> np.ndarray:
         """
@@ -244,11 +243,9 @@ class EdgeTPUModel:
     def move_tracking(self, det):
         # 수직 시야각(VFOV) = 46도
         # 수평 시야각(HFOV) = 86.5도
-
-        ball_conf_scores = [det[i, 4] for i in range(len(det)) if det[i, 5] == 0]
-        best_ball_idx = np.argmax(ball_conf_scores)
-        best_ball_det = det[best_ball_idx]
-
+        angle = [0,0]
+        best_ball_det = max(det, key=lambda x: x[4])
+        print('ball (x1,y1),(x2,y2)\n({},{}), ({},{})\n------------------------'.format(best_ball_det[0],best_ball_det[1],best_ball_det[2],best_ball_det[3]))
         box_mx = (best_ball_det[0] + best_ball_det[2]) / 2
         box_my = (best_ball_det[1] + best_ball_det[3]) / 2
 
@@ -300,55 +297,62 @@ class EdgeTPUModel:
         elif m_TiltAngle < self.m_TopLimit:
             m_TiltAngle = self.m_TopLimit
 
-        Angle = [0, 0]  
-        if len(ball_conf_scores):
-            Angle[0], Angle[1] = m_PanAngle, m_TiltAngle  
+        angle[0], angle[1] = m_PanAngle, m_TiltAngle  
+        return angle
 
-        return Angle
-    
+    def goal_position_pub(self, det):
+        best_goal_det = max(det, key=lambda x: x[4])
+        best_goal_xy = [((best_goal_det[0] + best_goal_det[2]) / 2), ((best_goal_det[1] + best_goal_det[3]) / 2)]
+        twist = Twist()
+        twist.linear.x = best_goal_xy[0]
+        twist.linear.y = best_goal_xy[1]
+        goal_pub.publish(twist)
 
     def process_predictions(self, det, output_image, pad, output_path="detection.jpg", save_img=True, save_txt=True, hide_labels=False, hide_conf=False):
         """
         Process predictions and optionally output an image with annotations
         """
-        global no_ball_cnt
         xyxy = []
+        angle = [0,0]
+        twist = Twist() 
+        ball_flag = 0
+        
         if len(det):
+
             # Rescale boxes from img_size to im0 size
             # x1, y1, x2, y2=
             det[:, :4] = self.get_scaled_coords(det[:,:4], output_image, pad)
-
-            output = {}
             '''
             det[:,:4] 양 옆 좌표  0:x1, 1:y1, 2:x2, 3:y2
             det[:,4] conf
-            det[:,5] class 0:ball 1:goal
+            det[:,5] class 0:ball 1:goal 2:foot
             '''
+
+            ball_det = [det[i,:] for i in range(len(det)) if det[i, 5] == 0]
+            goal_det = [det[i,:] for i in range(len(det)) if det[i, 5] == 1]
+            foot_det = [det[i,:] for i in range(len(det)) if det[i, 5] == 2]
+
+            output = {}
             base, ext = os.path.splitext(output_path)
 
-            angle = self.move_tracking(det)
-            distance = 55 * math.atan(angle[1]) #robot height
+            if len(ball_det):
+                angle = self.move_tracking(ball_det)
+                ball_distance = 55 * math.atan(angle[1]) #robot height
+                twist.linear.x = ball_distance
+                ball_flag = 1  # yes_ball
+                if len(foot_det):
+                    ball_flag = 2   # foot and ball
 
-            twist = Twist()
-            twist.angular.x = 1
+            if len(goal_det):
+                self.goal_position_pub(goal_det)
 
-            twist.angular.y = angle[0]
-            twist.angular.z = angle[1]
-            
-            twist.linear.x = distance
-            
-            pub.publish(twist)
-                            
             s = ""
-
             for c in np.unique(det[:, -1]):
                 n = (det[:, -1] == c).sum()  # detections per class
                 s += f"{n} {self.names[int(c)]}{'s' * (n > 1)}, "  # add to string
-
             if s != "":
                 s = s.strip()
                 s = s[:-1]
-            
             logger.info("Detected: {}".format(s))
             # Write results
             for *xyxy, conf, cls in reversed(det):
@@ -358,21 +362,15 @@ class EdgeTPUModel:
                     label = None if hide_labels else (self.names[c] if hide_conf else f'{self.names[c]} {conf:.2f}')
                     output_image = plot_one_box(xyxy, output_image, label=label, color=self.colors(c, True))
                 if save_txt:
-                    
                     if xyxy[0]<640 and xyxy[1]<480:
                         xyxy.append(conf)
-
                         if self.names[c]=="ball":
                             xyxy.append(1)        
-                    
                     output[base] = {}
                     output[base]['box'] = xyxy
                     output[base]['conf'] = conf
                     output[base]['cls'] = cls
                     output[base]['cls_name'] = self.names[c]
-            
-            print(output,'\n-----------------------')
-
             if save_txt:
                 output_txt = base+"txt"
                 with open(output_txt, 'w') as f:
@@ -380,14 +378,10 @@ class EdgeTPUModel:
             if save_img:
                 cv2.imwrite(output_path, output_image)
 
-        else:
-            twist = Twist()
-            twist.angular.x = 0
-            no_ball_cnt += 1
-
-            if no_ball_cnt > 15 :
-                pub.publish(twist)
-        
+        twist.angular.x = ball_flag
+        twist.angular.y = angle[0]
+        twist.angular.z = angle[1]
+        angle_pub.publish(twist)
         cv2.imshow('Camera', output_image)
         cv2.waitKey(1)
 
