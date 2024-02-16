@@ -245,6 +245,7 @@ class EdgeTPUModel:
         # 수평 시야각(HFOV) = 86.5도
         angle = [0,0]
         best_ball_det = max(det, key=lambda x: x[4])
+        print('ball (x1,y1),(x2,y2)\n({},{}), ({},{})\n------------------------'.format(best_ball_det[0],best_ball_det[1],best_ball_det[2],best_ball_det[3]))
         box_mx = (best_ball_det[0] + best_ball_det[2]) / 2
         box_my = (best_ball_det[1] + best_ball_det[3]) / 2
 
@@ -339,6 +340,8 @@ class EdgeTPUModel:
                 ball_distance = 55 * math.atan(angle[1]) #robot height
                 twist.linear.x = ball_distance
                 ball_flag = 1  # yes_ball
+                if len(foot_det):
+                    ball_flag = 2   # foot and ball
 
             if len(goal_det):
                 self.goal_position_pub(goal_det)
