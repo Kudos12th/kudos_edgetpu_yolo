@@ -1,57 +1,47 @@
 import cv2
 import os
-import time
+from datetime import datetime
+import numpy as np
 
-def capture_and_save_images(camera_index, save_directory, images_per_second, total_images):
-    # Open the camera
-    cap = cv2.VideoCapture(camera_index)
+now = datetime.now()
+formatted_now = now.strftime('%m-%d_%H-%M')
+save_path = f'./captured_img_dataset/{formatted_now}'
+os.makedirs(save_path, exist_ok=True)
 
-    # Check if the camera opened successfully
-    if not cap.isOpened():
-        print("Error: Could not open camera.")
-        return
+cap = cv2.VideoCapture(0) 
 
-    # Create the save directory if it doesn't exist
-    if not os.path.exists(save_directory):
-        os.makedirs(save_directory)
+n = 1
+last_time = datetime.now()
 
-    image_count = 0
-    start_time = time.time()
+def camera_calibration(frame):
+    cameraMatrix = np.array([[9.4088597780774421e+02, 0., 3.7770158111216648e+02],
+                            [0., 9.4925081349933703e+02, 3.2918621409818121e+02],
+                            [0., 0., 1.]])
+    distCoeffs = np.array([-4.4977607383629226e-01, -3.0529616557684319e-01,
+                        -3.9021603448837856e-03, -2.8130335366792153e-03,
+                        1.2224960045867554e+00])
+    cal_frame = cv2.undistort(frame, cameraMatrix, distCoeffs) #, None, new_img_size)
+    return cal_frame
 
-    while image_count < total_images:
-        # Capture frame-by-frame
-        ret, frame = cap.read()
 
-        if not ret:
-            print("Error: Failed to capture frame.")
-            break
+while True:
+    ret, frame = cap.read()
+    if not ret:
+        print("Failed to grab frame")
+        break
+    
+    frame = camera_calibration(frame)  # 카메라 왜곡 보정
+    cv2.imshow('Camera', frame)
 
-        # Save the image
-        image_name = os.path.join(save_directory, f"{image_count}.jpg")
-        cv2.imwrite(image_name, frame)
+    if (datetime.now() - last_time).total_seconds() >= 0.5:
+        img_name = f"{save_path}/{n}.jpg"
+        cv2.imwrite(img_name, frame)
+        print(f"Saved: {img_name}")
+        n += 1
+        last_time = datetime.now()
 
-        # Display image count
-        print(f"Saved image {image_count}")
+    if cv2.waitKey(1) == ord('q'):
+        break
 
-        # Increment image count
-        image_count += 1
-
-        # Wait for the next frame
-        time.sleep(1 / images_per_second)
-
-    # Release the camera and close the window
-    cap.release()
-    cv2.destroyAllWindows()
-
-    end_time = time.time()
-    elapsed_time = end_time - start_time
-    print(f"Captured {total_images} images in {elapsed_time:.2f} seconds.")
-
-# 설정
-camera_index = 0  # 카메라 인덱스 (일반적으로 0 또는 1)
-save_directory = "./data"  # 이미지 저장 디렉토리
-images_per_second = 5  # 초당 저장할 이미지 수
-total_images = 3000  # 총 저장할 이미지 수
-
-# 이미지 캡처 및 저장 실행
-capture_and_save_images(camera_index, save_directory, images_per_second, total_images)
+cap.release()
+cv2.destroyAllWindows()
