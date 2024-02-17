@@ -317,12 +317,13 @@ class TensorFlowModel:
             base, ext = os.path.splitext(output_path)
 
             if len(ball_det):
-                angle = self.move_tracking(ball_det)
+                angle, ball_xy  = self.move_tracking(ball_det)
                 ball_distance = 55 * math.atan(angle[1]) #robot height
                 twist.linear.x = ball_distance
                 ball_flag = 1  # yes_ball
-                if len(foot_det):
+                if len(foot_det) and (ball_xy[1] > 300):
                     ball_flag = 2   # foot and ball
+                    print('**********flag = 2************')
 
             if len(goal_det):
                 self.goal_position_pub(goal_det)

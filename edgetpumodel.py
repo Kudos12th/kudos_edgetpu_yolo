@@ -247,6 +247,7 @@ class EdgeTPUModel:
         best_ball_det = max(det, key=lambda x: x[4])
         box_mx = (best_ball_det[0] + best_ball_det[2]) / 2
         box_my = (best_ball_det[1] + best_ball_det[3]) / 2
+        ball_xy = [box_mx, box_my]
 
         err_X = box_mx - 320
         err_Y = box_my - 240
@@ -297,7 +298,7 @@ class EdgeTPUModel:
             m_TiltAngle = self.m_TopLimit
 
         angle[0], angle[1] = m_PanAngle, m_TiltAngle  
-        return angle
+        return angle , ball_xy
 
     def goal_position_pub(self, det):
         best_goal_det = max(det, key=lambda x: x[4])
@@ -327,7 +328,6 @@ class EdgeTPUModel:
             det[:,5] class 0:ball 1:goal 2:foot
             '''
 
-            # 공은 conf 0.8
             ball_det = [det[i,:] for i in range(len(det)) if det[i, 5] == 0 and det[i, 4] >= 0.8]
             goal_det = [det[i,:] for i in range(len(det)) if det[i, 5] == 1]
             foot_det = [det[i,:] for i in range(len(det)) if det[i, 5] == 2]
@@ -336,12 +336,13 @@ class EdgeTPUModel:
             base, ext = os.path.splitext(output_path)
 
             if len(ball_det):
-                angle = self.move_tracking(ball_det)
+                angle, ball_xy  = self.move_tracking(ball_det)
                 ball_distance = 55 * math.atan(angle[1]) #robot height
                 twist.linear.x = ball_distance
                 ball_flag = 1  # yes_ball
-                if len(foot_det):
+                if len(foot_det) and (ball_xy[1] > 300):
                     ball_flag = 2   # foot and ball
+                    print('**********flag = 2************')
 
             if len(goal_det):
                 self.goal_position_pub(goal_det)
