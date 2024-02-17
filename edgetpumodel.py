@@ -24,7 +24,7 @@ goal_pub = rospy.Publisher('goal_position_pub',Twist,queue_size=1000)
 
 class EdgeTPUModel:
 
-    def __init__(self, model_file, names_file, conf_thresh=0.25, iou_thresh=0.45, filter_classes=None, agnostic_nms=False, max_det=1000):
+    def __init__(self, model_file, names_file, conf_thresh=0.6, iou_thresh=0.45, filter_classes=None, agnostic_nms=False, max_det=1000):
         """
         Creates an object for running a Yolov5 model on an EdgeTPU
         
@@ -245,7 +245,6 @@ class EdgeTPUModel:
         # 수평 시야각(HFOV) = 86.5도
         angle = [0,0]
         best_ball_det = max(det, key=lambda x: x[4])
-        print('ball (x1,y1),(x2,y2)\n({},{}), ({},{})\n------------------------'.format(best_ball_det[0],best_ball_det[1],best_ball_det[2],best_ball_det[3]))
         box_mx = (best_ball_det[0] + best_ball_det[2]) / 2
         box_my = (best_ball_det[1] + best_ball_det[3]) / 2
 
@@ -328,7 +327,8 @@ class EdgeTPUModel:
             det[:,5] class 0:ball 1:goal 2:foot
             '''
 
-            ball_det = [det[i,:] for i in range(len(det)) if det[i, 5] == 0]
+            # 공은 conf 0.8
+            ball_det = [det[i,:] for i in range(len(det)) if det[i, 5] == 0 and det[i, 4] >= 0.8]
             goal_det = [det[i,:] for i in range(len(det)) if det[i, 5] == 1]
             foot_det = [det[i,:] for i in range(len(det)) if det[i, 5] == 2]
 

@@ -28,7 +28,7 @@ angle_pub = rospy.Publisher('move_tracking_Angle_pub', Twist, queue_size=1000)
 goal_pub = rospy.Publisher('goal_position_pub',Twist,queue_size=1000)
 
 class TensorFlowModel:
-    def __init__(self, model_path, names_file, conf_thresh=0.25, iou_thresh=0.45, filter_classes=None, agnostic_nms=False, max_det=1000):
+    def __init__(self, model_path, names_file, conf_thresh=0.6, iou_thresh=0.45, filter_classes=None, agnostic_nms=False, max_det=1000):
         """
         Creates an object for running a YOLOv5 model using TensorFlow
         
@@ -309,7 +309,7 @@ class TensorFlowModel:
             det[:,5] class 0:ball 1:goal 2:foot
             '''
 
-            ball_det = [det[i,:] for i in range(len(det)) if det[i, 5] == 0]
+            ball_det = [det[i,:] for i in range(len(det)) if det[i, 5] == 0 and det[i, 4] >= 0.8]
             goal_det = [det[i,:] for i in range(len(det)) if det[i, 5] == 1]
             foot_det = [det[i,:] for i in range(len(det)) if det[i, 5] == 2]
 
