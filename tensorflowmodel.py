@@ -229,6 +229,7 @@ class TensorFlowModel:
         best_ball_det = max(det, key=lambda x: x[4])
         box_mx = (best_ball_det[0] + best_ball_det[2]) / 2
         box_my = (best_ball_det[1] + best_ball_det[3]) / 2
+        ball_xy = [box_mx, box_my]
 
         err_X = box_mx - 320
         err_Y = box_my - 240
@@ -279,7 +280,7 @@ class TensorFlowModel:
             m_TiltAngle = self.m_TopLimit
 
         angle[0], angle[1] = m_PanAngle, m_TiltAngle  
-        return angle
+        return angle , ball_xy
     
     def goal_position_pub(self, det):
         best_goal_det = max(det, key=lambda x: x[4])
