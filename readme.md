@@ -57,8 +57,11 @@ cd kudos_edgetpu_yolo
     parser.add_argument("--device", type=int, default=0, help="Image capture device to run live detection")
     ```
 4. coral
-5. python3 detect.py --model best-int8_edgetpu.tflite --stream
-python3 detect.py --model 3class_new_saved_model --stream
+5. detect
+    ```
+    python3 detect.py --model 3class_new-int8_edgetpu.tflite --stream
+    python3 detect.py --model 3class_new_saved_model --stream
+    ```
 
 
 <br>
