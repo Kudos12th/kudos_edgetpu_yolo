@@ -1,5 +1,4 @@
 import os
-import sys
 import argparse
 import logging
 import time
@@ -10,8 +9,6 @@ import rospy
 import numpy as np
 from tqdm import tqdm
 import cv2
-import yaml
-import timeit
 from sensor_msgs.msg import CompressedImage
 from std_msgs.msg import Float64
 
