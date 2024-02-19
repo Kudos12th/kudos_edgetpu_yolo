@@ -67,7 +67,5 @@ cd kudos_edgetpu_yolo
 <br>
 
 ## Reference
-
-yolov5s_i384_b32_e160_edgetpu.tflite => best-int8_edgetpu.tflite
-
+- https://github.com/jveitchmichaelis/edgetpu-yolo
 
